@@ -696,7 +696,7 @@ pub(crate) fn expand_response(
         quote! {
             let response = match (sw1, sw2) {
                 #(#match_arms,)*
-                _ => return Err(nexum_apdu_core::Error::status(sw1, sw2)),
+                _ => return Err(nexum_apdu_core::response::error::ResponseError::status(sw1, sw2)),
             };
 
             Ok(response)
@@ -715,11 +715,9 @@ pub(crate) fn expand_response(
 
         impl #response_name {
             /// Parse response from raw bytes
-            pub fn from_bytes(bytes: &[u8]) -> core::result::Result<Self, nexum_apdu_core::Error> {
+            pub fn from_bytes(bytes: &[u8]) -> core::result::Result<Self, nexum_apdu_core::response::error::ResponseError> {
                 if bytes.len() < 2 {
-                    return Err(nexum_apdu_core::Error::Response(
-                        nexum_apdu_core::response::error::ResponseError::Incomplete
-                    ));
+                    return Err(nexum_apdu_core::response::error::ResponseError::Incomplete);
                 }
 
                 let sw1 = bytes[bytes.len() - 2];
@@ -740,7 +738,7 @@ pub(crate) fn expand_response(
         }
 
         impl TryFrom<bytes::Bytes> for #response_name {
-            type Error = nexum_apdu_core::Error;
+            type Error = nexum_apdu_core::response::error::ResponseError;
 
             fn try_from(bytes: bytes::Bytes) -> core::result::Result<Self, Self::Error> {
                 Self::from_bytes(&bytes)

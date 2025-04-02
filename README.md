@@ -95,15 +95,6 @@ Command processors can transform, secure, or log APDU commands before they reach
 
 Executors manage the complete command execution flow, combining transports and processors to provide a high-level interface for applications.
 
-## Note on `no_std` Support
-
-While significant work has been done to make nexum-apdu compatible with `no_std` environments, this support is still a work in progress. The core crate has a `no_std` feature flag that can be enabled, but extensive testing in embedded environments has not yet been conducted.
-
-```toml
-[dependencies]
-nexum-apdu-core = { version = "0.1.0", default-features = false }
-```
-
 ## Credits
 
 This project builds upon the work done in:
