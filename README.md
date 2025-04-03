@@ -55,7 +55,6 @@ This repository contains the following crates:
 - 📦 **Command processor pipeline** for flexible transformations
 - 📝 **Declarative command definitions** with the `apdu_pair!` macro
 - 🔄 **Response chaining support** for handling complex responses
-- 🐧 **no_std compatibility** for embedded environments (WIP)
 
 ## Documentation & Examples
 
