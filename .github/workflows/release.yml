@@ -34,28 +34,46 @@ jobs:
             - name: Login to crates.io
               run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
 
-            # Publish the crates in the correct order (dependency order)
+            # Publish crates in dependency order
             - name: Publish nexum-apdu-core
               working-directory: apdu/crates/core
-              run: cargo publish --no-verify
-
-            # Add delay between publishing to allow crates.io to update the index
-            - name: Wait for crates.io to update
-              run: sleep 30
+              run: |
+                  cargo publish --no-verify
+                  # Verify the crate is available before proceeding
+                  attempt=1
+                  max_attempts=10
+                  until cargo search nexum-apdu-core | grep -q "nexum-apdu-core = \"${{ steps.extract_version.outputs.VERSION }}\"" || [ $attempt -gt $max_attempts ]
+                  do
+                    echo "Waiting for nexum-apdu-core v${{ steps.extract_version.outputs.VERSION }} to be available on crates.io (attempt $attempt/$max_attempts)..."
+                    sleep 10
+                    attempt=$((attempt+1))
+                  done
+                  if [ $attempt -gt $max_attempts ]; then
+                    echo "Timed out waiting for nexum-apdu-core to be available on crates.io"
+                    exit 1
+                  fi
 
             - name: Publish nexum-apdu-macros
               working-directory: apdu/crates/macros
-              run: cargo publish --no-verify
-
-            - name: Wait for crates.io to update
-              run: sleep 30
+              run: |
+                  cargo publish --no-verify
+                  # Verify the crate is available before proceeding
+                  attempt=1
+                  max_attempts=10
+                  until cargo search nexum-apdu-macros | grep -q "nexum-apdu-macros = \"${{ steps.extract_version.outputs.VERSION }}\"" || [ $attempt -gt $max_attempts ]
+                  do
+                    echo "Waiting for nexum-apdu-macros v${{ steps.extract_version.outputs.VERSION }} to be available on crates.io (attempt $attempt/$max_attempts)..."
+                    sleep 10
+                    attempt=$((attempt+1))
+                  done
+                  if [ $attempt -gt $max_attempts ]; then
+                    echo "Timed out waiting for nexum-apdu-macros to be available on crates.io"
+                    exit 1
+                  fi
 
             - name: Publish nexum-apdu-transport-pcsc
               working-directory: apdu/crates/pcsc
               run: cargo publish --no-verify
-
-            - name: Wait for crates.io to update
-              run: sleep 30
 
             - name: Publish nexum-apdu-globalplatform
               working-directory: apdu/crates/globalplatform
