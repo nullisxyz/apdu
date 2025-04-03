@@ -173,8 +173,7 @@ impl GPSecureChannel {
             .map_err(ProcessorError::from)?;
 
         // Parse response
-        let auth_response = ExternalAuthenticateResponse::from_bytes(&response_bytes)
-            .map_err(|e| ProcessorError::other(format!("Failed to parse response: {:?}", e)))?;
+        let auth_response = ExternalAuthenticateResponse::from_bytes(&response_bytes)?;
 
         // Check if successful
         if !matches!(auth_response, ExternalAuthenticateResponse::Success) {
@@ -265,7 +264,6 @@ pub fn create_secure_channel_provider(keys: Keys) -> GPSecureChannelProvider {
 }
 
 impl SecureChannelProvider for GPSecureChannelProvider {
-    // Use ProcessorError directly as the error type
     type Error = ProcessorError;
 
     fn create_secure_channel(
@@ -278,17 +276,10 @@ impl SecureChannelProvider for GPSecureChannelProvider {
 
         // Step 1: Send INITIALIZE UPDATE
         let init_cmd = InitializeUpdateCommand::with_challenge(host_challenge.to_vec());
-        let response_bytes = transport
-            .transmit_raw(&init_cmd.to_bytes())
-            .map_err(ProcessorError::from)?;
+        let response_bytes = transport.transmit_raw(&init_cmd.to_bytes())?;
 
         // Parse response
-        let init_response = InitializeUpdateResponse::from_bytes(&response_bytes).map_err(|e| {
-            ProcessorError::other(format!(
-                "Failed to parse INITIALIZE UPDATE response: {:?}",
-                e
-            ))
-        })?;
+        let init_response = InitializeUpdateResponse::from_bytes(&response_bytes)?;
 
         // Check for successful response
         if !matches!(init_response, InitializeUpdateResponse::Success { .. }) {
@@ -298,13 +289,10 @@ impl SecureChannelProvider for GPSecureChannelProvider {
         }
 
         // Create session directly from response
-        let session = Session::from_response(&self.keys, &init_response, host_challenge)
-            .map_err(|e| ProcessorError::other(format!("Failed to create session: {:?}", e)))?;
+        let session = Session::from_response(&self.keys, &init_response, host_challenge)?;
 
         // Create secure channel with session (not yet established)
-        let mut channel = GPSecureChannel::new(session).map_err(|e| {
-            ProcessorError::other(format!("Failed to create secure channel: {:?}", e))
-        })?;
+        let mut channel = GPSecureChannel::new(session)?;
 
         // Step 2: Authenticate the channel (sends EXTERNAL AUTHENTICATE)
         channel.authenticate(transport)?;
