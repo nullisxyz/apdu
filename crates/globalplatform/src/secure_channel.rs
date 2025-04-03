@@ -122,6 +122,8 @@ pub struct GPSecureChannel {
     wrapper: SCP02Wrapper,
     /// Whether the channel is established
     established: bool,
+    /// Current security level
+    security_level: SecurityLevel,
 }
 
 impl fmt::Debug for GPSecureChannel {
@@ -141,6 +143,7 @@ impl GPSecureChannel {
             session,
             wrapper,
             established: false,
+            security_level: SecurityLevel::default(),
         })
     }
 
@@ -183,6 +186,9 @@ impl GPSecureChannel {
                 "EXTERNAL AUTHENTICATE failed",
             ));
         }
+
+        // Set security level
+        self.security_level = SecurityLevel::MACProtection;
 
         // Mark channel as established
         self.established = true;
@@ -234,6 +240,7 @@ impl SecureChannel for GPSecureChannel {
     fn close(&mut self) -> Result<(), ProcessorError> {
         debug!("Closing GlobalPlatform SCP02 secure channel");
         self.established = false;
+        self.security_level = SecurityLevel::None;
         Ok(())
     }
 

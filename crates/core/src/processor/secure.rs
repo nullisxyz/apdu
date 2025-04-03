@@ -22,13 +22,19 @@ use crate::transport::error::TransportError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SecurityLevel {
     /// No security (plain communication)
-    NoSecurity,
+    None,
     /// Authentication only
     Authenticated,
     /// Message Authentication Codes (data integrity)
     MACProtection,
     /// Full encryption (data confidentiality and integrity)
     FullEncryption,
+}
+
+impl Default for SecurityLevel {
+    fn default() -> Self {
+        SecurityLevel::None
+    }
 }
 
 /// Trait for secure channel providers
