@@ -19,9 +19,10 @@ use crate::transport::CardTransport;
 use crate::transport::error::TransportError;
 
 /// Security level for communication
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum SecurityLevel {
     /// No security (plain communication)
+    #[default]
     None,
     /// Authentication only
     Authenticated,
@@ -29,12 +30,6 @@ pub enum SecurityLevel {
     MACProtection,
     /// Full encryption (data confidentiality and integrity)
     FullEncryption,
-}
-
-impl Default for SecurityLevel {
-    fn default() -> Self {
-        SecurityLevel::None
-    }
 }
 
 /// Trait for secure channel providers

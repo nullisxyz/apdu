@@ -35,10 +35,10 @@ pub trait SecureChannelExecutor: Executor {
 // Implementation for CardExecutor
 impl<T: CardTransport<Error = TransportError>> ResponseAwareExecutor for super::CardExecutor<T> {
     fn last_response(&self) -> Result<&Bytes, crate::Error> {
-        match self.last_response() {
-            Some(response) => Ok(response),
-            None => Err(TransportError::Other("No last response available".to_string()).into()),
-        }
+        self.last_response().map_or_else(
+            || Err(TransportError::Other("No last response available".to_string()).into()),
+            Ok,
+        )
     }
 }
 

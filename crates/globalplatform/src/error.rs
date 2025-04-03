@@ -113,12 +113,12 @@ impl Error {
     }
 
     /// Check if this error represents a specific card status
-    pub fn is_status(&self, status: u16) -> bool {
+    pub const fn is_status(&self, status: u16) -> bool {
         matches!(self, Self::CardStatus(sw) if sw.to_u16() == status)
     }
 
     /// Try to extract a status word if this error contains one
-    pub fn status_word(&self) -> Option<StatusWord> {
+    pub const fn status_word(&self) -> Option<StatusWord> {
         match self {
             Self::CardStatus(sw) => Some(*sw),
             Self::Status(e) => Some(e.status_word()),
