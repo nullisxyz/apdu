@@ -7,10 +7,11 @@ use std::fmt;
 
 use bytes::{BufMut, BytesMut};
 use cipher::{Iv, Key};
-use nexum_apdu_core::processor::secure::{SecureChannel, SecureChannelProvider};
-use nexum_apdu_core::processor::{CommandProcessor, error::ProcessorError};
-use nexum_apdu_core::transport::CardTransport;
-use nexum_apdu_core::transport::error::TransportError;
+use nexum_apdu_core::processor::{
+    CommandProcessor, ProcessorError,
+    secure::{SecureChannel, SecureChannelProvider, SecurityLevel},
+};
+use nexum_apdu_core::transport::{CardTransport, TransportError};
 use nexum_apdu_core::{ApduCommand, Command, Response};
 use rand::RngCore;
 use tracing::{debug, trace, warn};
