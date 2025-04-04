@@ -20,7 +20,7 @@ use crate::transport::CardTransport;
 use crate::transport::error::TransportError;
 
 /// Security level flags for communication
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct SecurityLevel {
     /// Whether authentication has been established
     authenticated: bool,
@@ -30,16 +30,6 @@ pub struct SecurityLevel {
     encrypted: bool,
 }
 
-impl Default for SecurityLevel {
-    fn default() -> Self {
-        SecurityLevel {
-            authenticated: false,
-            mac_protection: false,
-            encrypted: false,
-        }
-    }
-}
-
 impl SecurityLevel {
     /// No security (plain communication)
     pub fn none() -> Self {
@@ -47,7 +37,7 @@ impl SecurityLevel {
     }
 
     /// Authentication only
-    pub fn authenticated() -> Self {
+    pub const fn authenticated() -> Self {
         Self {
             authenticated: true,
             mac_protection: false,
@@ -56,7 +46,7 @@ impl SecurityLevel {
     }
 
     /// Message Authentication Codes (data integrity) only
-    pub fn mac_protected() -> Self {
+    pub const fn mac_protected() -> Self {
         Self {
             authenticated: false,
             mac_protection: true,
@@ -65,7 +55,7 @@ impl SecurityLevel {
     }
 
     /// Authentication with MAC protection
-    pub fn authenticated_mac() -> Self {
+    pub const fn authenticated_mac() -> Self {
         Self {
             authenticated: true,
             mac_protection: true,
@@ -74,7 +64,7 @@ impl SecurityLevel {
     }
 
     /// Full encryption (automatically includes MAC protection)
-    pub fn encrypted() -> Self {
+    pub const fn encrypted() -> Self {
         Self {
             authenticated: false,
             mac_protection: true, // Encryption implies MAC protection
@@ -83,7 +73,7 @@ impl SecurityLevel {
     }
 
     /// Full encryption with authentication
-    pub fn authenticated_encrypted() -> Self {
+    pub const fn authenticated_encrypted() -> Self {
         Self {
             authenticated: true,
             mac_protection: true, // Encryption implies MAC protection
@@ -92,7 +82,7 @@ impl SecurityLevel {
     }
 
     /// Full security - authentication, MAC protection, and encryption
-    pub fn full_security() -> Self {
+    pub const fn full_security() -> Self {
         Self {
             authenticated: true,
             mac_protection: true,
@@ -101,45 +91,43 @@ impl SecurityLevel {
     }
 
     /// Check if a security level satisfies required security properties
-    pub fn satisfies(&self, required: &SecurityLevel) -> bool {
-        (required.authenticated == false || self.authenticated == true)
-            && (required.mac_protection == false
-                || self.mac_protection == true
-                || self.encrypted == true)
-            && (required.encrypted == false || self.encrypted == true)
+    pub const fn satisfies(&self, required: &Self) -> bool {
+        (!required.authenticated || self.authenticated)
+            && (!required.mac_protection || self.mac_protection || self.encrypted)
+            && (!required.encrypted || self.encrypted)
     }
 
     /// Check if the security level is authenticated (such as a PIN verified)
-    pub fn is_authenticated(&self) -> bool {
+    pub const fn is_authenticated(&self) -> bool {
         self.authenticated
     }
 
     /// Check if the security level has MAC protection
-    pub fn has_mac_protection(&self) -> bool {
+    pub const fn has_mac_protection(&self) -> bool {
         self.mac_protection || self.encrypted // Encryption implies MAC protection
     }
 
     /// Check if the security level is encrypted
-    pub fn is_encrypted(&self) -> bool {
+    pub const fn is_encrypted(&self) -> bool {
         self.encrypted
     }
 
     // Builder methods to add security properties
 
     /// Builder method to add authentication
-    pub fn with_authentication(mut self) -> Self {
+    pub const fn with_authentication(mut self) -> Self {
         self.authenticated = true;
         self
     }
 
     /// Builder method to add MAC protection
-    pub fn with_mac_protection(mut self) -> Self {
+    pub const fn with_mac_protection(mut self) -> Self {
         self.mac_protection = true;
         self
     }
 
     /// Builder method to add encryption
-    pub fn with_encryption(mut self) -> Self {
+    pub const fn with_encryption(mut self) -> Self {
         // Encryption implies MAC protection
         self.mac_protection = true;
         self.encrypted = true;
@@ -237,7 +225,7 @@ impl BaseSecureChannel {
     }
 
     /// Mark the channel as established
-    pub fn set_established(&mut self, established: bool) {
+    pub const fn set_established(&mut self, established: bool) {
         self.established = established;
     }
 }
