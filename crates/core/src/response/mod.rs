@@ -7,8 +7,6 @@ pub mod error;
 pub mod status;
 pub mod utils;
 
-use std::fmt;
-
 use bytes::{BufMut, Bytes, BytesMut};
 use tracing::trace;
 
@@ -17,9 +15,6 @@ use status::StatusWord;
 
 /// Trait for APDU responses
 pub trait ApduResponse: Sized {
-    /// Error type returned by the response
-    type Error: Into<crate::Error> + fmt::Debug;
-
     /// Get the response payload data
     fn payload(&self) -> &[u8];
 
@@ -32,16 +27,13 @@ pub trait ApduResponse: Sized {
     }
 
     /// Create from raw APDU response data
-    fn from_bytes(data: &[u8]) -> Result<Self, Self::Error>;
+    fn from_bytes(data: &[u8]) -> Result<Self, ResponseError>;
 }
 
 /// Trait for types that can be created from APDU response data
 pub trait FromApduResponse: Sized {
-    /// Error that can occur during conversion
-    type Error: Into<crate::Error> + fmt::Debug;
-
     /// Convert raw APDU response data to this type
-    fn from_response(data: &[u8]) -> core::result::Result<Self, Self::Error>;
+    fn from_response(data: &[u8]) -> Result<Self, ResponseError>;
 }
 
 /// Basic APDU response structure
@@ -101,27 +93,25 @@ impl Response {
     }
 
     /// Convert to a bytes result
-    pub fn into_bytes_result(self) -> core::result::Result<Bytes, StatusError> {
+    pub fn into_bytes_result(self) -> Result<Bytes, StatusError> {
         if self.is_success() {
             Ok(self.payload)
         } else {
-            Err(StatusError::new(self.status.sw1, self.status.sw2))
+            Err(StatusError::new(self.status.sw1, self.status.sw2).into())
         }
     }
 
     /// Convert to a bytes reference result
-    pub fn as_bytes_result(&self) -> core::result::Result<&[u8], StatusError> {
+    pub fn as_bytes_result(&self) -> Result<&[u8], ResponseError> {
         if self.is_success() {
             Ok(&self.payload)
         } else {
-            Err(StatusError::new(self.status.sw1, self.status.sw2))
+            Err(StatusError::new(self.status.sw1, self.status.sw2).into())
         }
     }
 }
 
 impl ApduResponse for Response {
-    type Error = ResponseError;
-
     fn payload(&self) -> &[u8] {
         &self.payload
     }
@@ -130,7 +120,7 @@ impl ApduResponse for Response {
         self.status
     }
 
-    fn from_bytes(data: &[u8]) -> Result<Self, Self::Error> {
+    fn from_bytes(data: &[u8]) -> Result<Self, ResponseError> {
         Self::from_bytes(data)
     }
 }
@@ -138,7 +128,7 @@ impl ApduResponse for Response {
 impl TryFrom<&[u8]> for Response {
     type Error = ResponseError;
 
-    fn try_from(data: &[u8]) -> Result<Self, Self::Error> {
+    fn try_from(data: &[u8]) -> Result<Self, ResponseError> {
         Self::from_bytes(data)
     }
 }
@@ -147,7 +137,7 @@ impl TryFrom<&[u8]> for Response {
 impl TryFrom<Bytes> for Response {
     type Error = ResponseError;
 
-    fn try_from(data: Bytes) -> Result<Self, Self::Error> {
+    fn try_from(data: Bytes) -> Result<Self, ResponseError> {
         Self::from_bytes(&data)
     }
 }

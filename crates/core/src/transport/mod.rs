@@ -16,15 +16,12 @@ use tracing::{debug, trace};
 /// A transport is responsible for sending and receiving raw APDU bytes.
 /// It has no knowledge of command structure, secure channels, or protocol details.
 pub trait CardTransport: Send + Sync + fmt::Debug {
-    /// Error type returned by the transport
-    type Error: Into<crate::Error> + fmt::Debug;
-
     /// Send raw APDU bytes to card and return response bytes
     ///
     /// This method should handle the low-level communication with the card
     /// but should not interpret the contents or handle protocol-specific
     /// operations like GET RESPONSE.
-    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Self::Error> {
+    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError> {
         trace!(command = ?hex::encode(command), "Transmitting raw command");
         let result = self.do_transmit_raw(command);
         match &result {
@@ -40,13 +37,13 @@ pub trait CardTransport: Send + Sync + fmt::Debug {
 
     /// Internal implementation of transmit_raw
     /// This is the method that concrete implementations should override
-    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Self::Error>;
+    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError>;
 
     /// Check if the transport is connected to a physical card
     fn is_connected(&self) -> bool;
 
     /// Reset the transport connection
-    fn reset(&mut self) -> Result<(), Self::Error>;
+    fn reset(&mut self) -> Result<(), TransportError>;
 }
 
 #[cfg(test)]
@@ -89,11 +86,9 @@ impl MockTransport {
 
 #[cfg(test)]
 impl CardTransport for MockTransport {
-    type Error = TransportError;
-
-    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Self::Error> {
+    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError> {
         if !self.connected {
-            return Err(TransportError::Connection);
+            return Err(TransportError::Connection)?;
         }
 
         self.commands.push(Bytes::copy_from_slice(command));
@@ -114,7 +109,7 @@ impl CardTransport for MockTransport {
         self.connected
     }
 
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    fn reset(&mut self) -> Result<(), TransportError> {
         self.connected = true;
         self.commands.clear();
         Ok(())

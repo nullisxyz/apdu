@@ -1,5 +1,3 @@
-// File: apdu/crates/macros/src/command.rs
-
 //! Command parsing and expansion logic
 
 use proc_macro2::{Span, TokenStream};
@@ -149,7 +147,6 @@ pub(crate) fn expand_command(
 
         impl nexum_apdu_core::ApduCommand for #command_name {
             type Response = #response_name;
-            type Error = nexum_apdu_core::response::error::ResponseError;
 
             fn class(&self) -> u8 {
                 #cla

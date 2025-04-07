@@ -58,8 +58,6 @@ where
 impl<E> GlobalPlatform<E>
 where
     E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
-    nexum_apdu_core::response::error::ResponseError: Into<E::Error>,
-    Error: From<E::Error>,
 {
     /// Create a new GlobalPlatform instance
     pub const fn new(executor: E) -> Self {
@@ -381,9 +379,10 @@ mod tests {
     }
 
     impl nexum_apdu_core::transport::CardTransport for TestTransport {
-        type Error = TransportError;
-
-        fn do_transmit_raw(&mut self, _command: &[u8]) -> std::result::Result<Bytes, Self::Error> {
+        fn do_transmit_raw(
+            &mut self,
+            _command: &[u8],
+        ) -> std::result::Result<Bytes, TransportError> {
             if self.responses.is_empty() {
                 return Err(TransportError::Transmission)?;
             }
@@ -399,7 +398,7 @@ mod tests {
             true
         }
 
-        fn reset(&mut self) -> std::result::Result<(), Self::Error> {
+        fn reset(&mut self) -> std::result::Result<(), TransportError> {
             Ok(())
         }
     }

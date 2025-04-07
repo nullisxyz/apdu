@@ -11,7 +11,7 @@ use nexum_apdu_core::processor::{
     CommandProcessor, ProcessorError,
     secure::{SecureChannel, SecureChannelProvider, SecurityLevel},
 };
-use nexum_apdu_core::transport::{CardTransport, TransportError};
+use nexum_apdu_core::transport::CardTransport;
 use nexum_apdu_core::{ApduCommand, Command, Response};
 use rand::RngCore;
 use tracing::{debug, trace, warn};
@@ -155,7 +155,7 @@ impl GPSecureChannel {
     /// Authenticate the secure channel using EXTERNAL AUTHENTICATE
     pub fn authenticate(
         &mut self,
-        transport: &mut dyn CardTransport<Error = TransportError>,
+        transport: &mut dyn CardTransport,
     ) -> Result<(), ProcessorError> {
         // Create EXTERNAL AUTHENTICATE command
         let auth_cmd = ExternalAuthenticateCommand::from_challenges(
@@ -198,15 +198,13 @@ impl GPSecureChannel {
 }
 
 impl CommandProcessor for GPSecureChannel {
-    type Error = ProcessorError;
-
     fn do_process_command(
         &mut self,
         command: &Command,
-        transport: &mut dyn CardTransport<Error = TransportError>,
-    ) -> Result<Response, ProcessorError> {
+        transport: &mut dyn CardTransport,
+    ) -> nexum_apdu_core::Result<Response> {
         if !self.established {
-            return Err(ProcessorError::session("Secure channel not established"));
+            return Err(ProcessorError::session("Secure channel not established").into());
         }
 
         trace!(command = ?command, "Processing command with GlobalPlatform SCP02");
@@ -237,18 +235,19 @@ impl SecureChannel for GPSecureChannel {
         self.established
     }
 
-    fn close(&mut self) -> Result<(), ProcessorError> {
+    fn close(&mut self) -> nexum_apdu_core::Result<()> {
         debug!("Closing GlobalPlatform SCP02 secure channel");
         self.established = false;
         self.security_level = SecurityLevel::none();
         Ok(())
     }
 
-    fn reestablish(&mut self) -> Result<(), ProcessorError> {
+    fn reestablish(&mut self) -> nexum_apdu_core::Result<()> {
         warn!("Reestablish not implemented for GlobalPlatform SCP02");
         Err(ProcessorError::session(
             "Cannot reestablish GlobalPlatform SCP02 channel - a new session must be created",
-        ))
+        )
+        .into())
     }
 }
 
@@ -272,12 +271,10 @@ pub const fn create_secure_channel_provider(keys: Keys) -> GPSecureChannelProvid
 }
 
 impl SecureChannelProvider for GPSecureChannelProvider {
-    type Error = ProcessorError;
-
     fn create_secure_channel(
         &self,
-        transport: &mut dyn CardTransport<Error = TransportError>,
-    ) -> Result<Box<dyn CommandProcessor<Error = ProcessorError>>, ProcessorError> {
+        transport: &mut dyn CardTransport,
+    ) -> nexum_apdu_core::Result<Box<dyn CommandProcessor>> {
         // Generate host challenge
         let mut host_challenge = HostChallenge::default();
         rand::rng().fill_bytes(&mut host_challenge);
@@ -291,9 +288,7 @@ impl SecureChannelProvider for GPSecureChannelProvider {
 
         // Check for successful response
         if !matches!(init_response, InitializeUpdateResponse::Success { .. }) {
-            return Err(ProcessorError::authentication_failed(
-                "INITIALIZE UPDATE failed",
-            ));
+            return Err(ProcessorError::authentication_failed("INITIALIZE UPDATE failed").into());
         }
 
         // Create session directly from response
@@ -315,6 +310,7 @@ mod tests {
     use crate::session::Keys;
     use bytes::Bytes;
     use hex_literal::hex;
+    use nexum_apdu_core::transport::TransportError;
 
     // Create a mock transport implementation for testing
     #[derive(Debug)]
@@ -339,9 +335,7 @@ mod tests {
     }
 
     impl CardTransport for TestMockTransport {
-        type Error = TransportError;
-
-        fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Self::Error> {
+        fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError> {
             self.commands.push(command.to_vec());
 
             if self.responses.is_empty() {
@@ -360,7 +354,7 @@ mod tests {
             true
         }
 
-        fn reset(&mut self) -> Result<(), Self::Error> {
+        fn reset(&mut self) -> Result<(), TransportError> {
             self.commands.clear();
             Ok(())
         }

@@ -1,7 +1,6 @@
 //! Example showing how to select an application by AID
 
 use nexum_apdu_core::prelude::Executor;
-use nexum_apdu_core::transport::error::TransportError;
 use nexum_apdu_core::{ApduCommand, ApduResponse, CardExecutor, Command, Error};
 use nexum_apdu_transport_pcsc::PcscDeviceManager;
 use std::thread::sleep;
@@ -34,7 +33,7 @@ impl AidRegistry {
 
 /// Select an application by AID
 fn select_aid(
-    executor: &mut CardExecutor<impl nexum_apdu_core::CardTransport<Error = TransportError>>,
+    executor: &mut CardExecutor<impl nexum_apdu_core::CardTransport>,
     aid_hex: &str,
 ) -> Result<String, Error> {
     let aid = hex::decode(aid_hex).map_err(|_| Error::Parse("Invalid AID hex"))?;

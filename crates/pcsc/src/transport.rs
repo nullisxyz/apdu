@@ -147,9 +147,7 @@ impl PcscTransport {
 }
 
 impl CardTransport for PcscTransport {
-    type Error = TransportError;
-
-    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Self::Error> {
+    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError> {
         // Direct transmission without transaction handling
         self.transmit_command(command).map_err(TransportError::from)
     }
@@ -158,7 +156,7 @@ impl CardTransport for PcscTransport {
         self.card.is_some()
     }
 
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    fn reset(&mut self) -> Result<(), TransportError> {
         // End any active transaction
         self.transaction_active = false;
 
