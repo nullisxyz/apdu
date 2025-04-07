@@ -14,7 +14,6 @@ use dyn_clone::DynClone;
 use secure::SecurityLevel;
 use tracing::{debug, trace};
 
-use crate::Result;
 use crate::command::Command;
 use crate::command::ExpectedLength;
 use crate::response::Response;
@@ -34,7 +33,7 @@ pub trait CommandProcessor: Send + Sync + fmt::Debug + DynClone {
         &mut self,
         command: &Command,
         transport: &mut dyn CardTransport,
-    ) -> Result<Response> {
+    ) -> core::result::Result<Response, ProcessorError> {
         trace!(
             command = ?command,
             processor = std::any::type_name::<Self>(),
@@ -66,7 +65,7 @@ pub trait CommandProcessor: Send + Sync + fmt::Debug + DynClone {
         &mut self,
         command: &Command,
         transport: &mut dyn CardTransport,
-    ) -> Result<Response>;
+    ) -> core::result::Result<Response, ProcessorError>;
 
     /// Get the security level provided by this processor
     fn security_level(&self) -> SecurityLevel {
@@ -91,7 +90,7 @@ impl CommandProcessor for IdentityProcessor {
         &mut self,
         command: &Command,
         transport: &mut dyn CardTransport,
-    ) -> Result<Response> {
+    ) -> core::result::Result<Response, ProcessorError> {
         // Convert command to bytes and send
         let command_bytes = command.to_bytes();
         let response_bytes = transport.transmit_raw(&command_bytes)?;
@@ -126,7 +125,7 @@ impl CommandProcessor for GetResponseProcessor {
         &mut self,
         command: &Command,
         transport: &mut dyn CardTransport,
-    ) -> Result<Response> {
+    ) -> core::result::Result<Response, ProcessorError> {
         // Convert command to bytes
         let command_bytes = command.to_bytes();
 

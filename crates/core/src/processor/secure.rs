@@ -227,7 +227,7 @@ impl CommandProcessor for BaseSecureChannel {
         &mut self,
         command: &Command,
         transport: &mut dyn CardTransport,
-    ) -> crate::Result<Response> {
+    ) -> Result<Response, ProcessorError> {
         warn!("Using BaseSecureChannel which does not implement any protection");
 
         let command_bytes = command.to_bytes();
@@ -287,7 +287,7 @@ impl CommandProcessor for MockSecureChannel {
         &mut self,
         command: &Command,
         transport: &mut dyn CardTransport,
-    ) -> crate::Result<Response> {
+    ) -> Result<Response, ProcessorError> {
         if !self.is_established() {
             return Err(ProcessorError::session("Secure channel not established").into());
         }

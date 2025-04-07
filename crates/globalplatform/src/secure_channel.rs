@@ -202,7 +202,7 @@ impl CommandProcessor for GPSecureChannel {
         &mut self,
         command: &Command,
         transport: &mut dyn CardTransport,
-    ) -> nexum_apdu_core::Result<Response> {
+    ) -> Result<Response, ProcessorError> {
         if !self.established {
             return Err(ProcessorError::session("Secure channel not established").into());
         }
