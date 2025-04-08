@@ -42,6 +42,7 @@ pub mod operations {
     use nexum_apdu_core::prelude::Executor;
     use nexum_apdu_core::{ResponseAwareExecutor, SecureChannelExecutor};
 
+    use crate::commands::get_status::{parse_applications, parse_load_files};
     use crate::{Error, GlobalPlatform, Result};
 
     /// Connect to a card, select the card manager, and establish a secure channel
@@ -53,7 +54,8 @@ pub mod operations {
         let mut gp = GlobalPlatform::new(executor);
 
         // Select the Card Manager
-        gp.select_card_manager()?;
+        gp.select_card_manager()?
+            .map_err(|e| Error::Msg(e.to_string()))?;
 
         // Open secure channel with default keys
         gp.open_secure_channel()?;
@@ -68,8 +70,10 @@ pub mod operations {
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
     {
-        let response = gp.get_applications_status()?;
-        Ok(response.parse_applications())
+        let response = gp
+            .get_applications_status()?
+            .map_err(|e| Error::Msg(e.to_string()))?;
+        Ok(parse_applications(response))
     }
 
     /// List all packages on the card
@@ -79,8 +83,10 @@ pub mod operations {
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
     {
-        let response = gp.get_load_files_status()?;
-        Ok(response.parse_load_files())
+        let response = gp
+            .get_load_files_status()?
+            .map_err(|e| Error::Msg(e.to_string()))?;
+        Ok(parse_load_files(response))
     }
 
     /// Delete a package and all of its applications
@@ -89,12 +95,9 @@ pub mod operations {
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
     {
         // Delete the package and all related applications
-        let response = gp.delete_object_and_related(aid)?;
-
-        // Check if deletion was successful
-        if !matches!(response, crate::commands::DeleteResponse::Success) {
-            return Err(Error::Other("Failed to delete package"));
-        }
+        let _ = gp
+            .delete_object_and_related(aid)?
+            .map_err(|e| Error::Msg(e.to_string()));
 
         Ok(())
     }
@@ -117,7 +120,8 @@ pub mod operations {
             .ok_or(Error::CapFile("Missing package AID"))?;
 
         // Install for load
-        gp.install_for_load(&package_aid, None)?;
+        gp.install_for_load(&package_aid, None)?
+            .map_err(|e| Error::Msg(e.to_string()))?;
 
         // Load the CAP file
         gp.load_cap_file(&cap_path, None)?;
@@ -131,7 +135,8 @@ pub mod operations {
                     applet_aid,
                     applet_aid,
                     install_params,
-                )?;
+                )?
+                .map_err(|e| Error::Msg(e.to_string()))?;
             }
         }
 

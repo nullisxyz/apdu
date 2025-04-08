@@ -111,41 +111,43 @@ apdu_pair! {
                         _ => None,
                     }
                 }
-
-                /// Parse application entries
-                pub fn parse_applications(&self) -> Vec<ApplicationInfo> {
-                    self.tlv_data().as_ref().map_or_else(Vec::new, |data| {
-                        parse_entries(data, EntryType::Application)
-                            .into_iter()
-                            .filter_map(|entry| {
-                                if let Entry::Application(app) = entry {
-                                    Some(app)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect()
-                    })
-                }
-
-                /// Parse load file entries
-                pub fn parse_load_files(&self) -> Vec<LoadFileInfo> {
-                    self.tlv_data().as_ref().map_or_else(Vec::new, |data| {
-                        parse_entries(data, EntryType::LoadFile)
-                            .into_iter()
-                            .filter_map(|entry| {
-                                if let Entry::LoadFile(file) = entry {
-                                    Some(file)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect()
-                    })
-                }
             }
         }
     }
+}
+
+pub fn tlv_data(data: GetStatusOk) -> Vec<u8> {
+    match data {
+        GetStatusOk::Success { tlv_data } | GetStatusOk::MoreData { tlv_data, .. } => tlv_data,
+    }
+}
+
+/// Parse application entries
+pub fn parse_applications(data: GetStatusOk) -> Vec<ApplicationInfo> {
+    parse_entries(tlv_data(data).as_slice(), EntryType::Application)
+        .into_iter()
+        .filter_map(|entry| {
+            if let Entry::Application(app) = entry {
+                Some(app)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Parse load file entries
+pub fn parse_load_files(data: GetStatusOk) -> Vec<LoadFileInfo> {
+    parse_entries(tlv_data(data).as_slice(), EntryType::LoadFile)
+        .into_iter()
+        .filter_map(|entry| {
+            if let Entry::LoadFile(file) = entry {
+                Some(file)
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Application information from GET STATUS
@@ -329,7 +331,7 @@ mod tests {
         let response = GetStatusResponse::from_bytes(&response_data).unwrap();
 
         // Parse applications
-        let apps = response.parse_applications();
+        let apps = parse_applications(response.to_result().unwrap());
 
         // Check that we got two applications
         assert_eq!(apps.len(), 2);
@@ -360,7 +362,7 @@ mod tests {
         let response = GetStatusResponse::from_bytes(&response_data).unwrap();
 
         // Parse load files
-        let files = response.parse_load_files();
+        let files = parse_load_files(response.to_result().unwrap());
 
         // Check that we got two load files
         assert_eq!(files.len(), 2);

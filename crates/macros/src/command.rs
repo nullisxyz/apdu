@@ -96,6 +96,7 @@ pub(crate) fn expand_command(
     vis: &Visibility,
     command_name: &Ident,
     response_name: &Ident,
+    result_name: &Ident,
 ) -> Result<TokenStream, syn::Error> {
     let cla = &command.cla;
     let ins = &command.ins;
@@ -147,6 +148,7 @@ pub(crate) fn expand_command(
 
         impl nexum_apdu_core::ApduCommand for #command_name {
             type Response = #response_name;
+            type ResultType = #result_name;
 
             fn class(&self) -> u8 {
                 #cla

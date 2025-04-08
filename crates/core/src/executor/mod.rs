@@ -57,14 +57,14 @@ pub trait Executor: Send + Sync + fmt::Debug {
         Ok(response)
     }
 
-    /// Execute a typed APDU command and return a typed response
+    /// Execute a typed APDU command and return the Result type (Success variant or Error)
     ///
-    /// This is the highest level transmission method for type-safe APDU exchanges.
-    /// It automatically checks security requirements if the command requires it.
-    fn execute<C>(&mut self, command: &C) -> Result<C::Response>
+    /// This method returns the command's Result type (not Response enum) for more
+    /// idiomatic error handling with the ? operator.
+    fn execute<C>(&mut self, command: &C) -> Result<C::ResultType>
     where
         C: ApduCommand,
-        C::Response: TryFrom<Bytes>,
+        C::Response: TryFrom<Bytes> + Into<C::ResultType>,
         <C::Response as TryFrom<Bytes>>::Error: Into<Error>,
     {
         // Check security level requirement
@@ -80,8 +80,11 @@ pub trait Executor: Send + Sync + fmt::Debug {
         let command_bytes = command.to_bytes();
         let response_bytes = self.transmit_raw(&command_bytes)?;
 
-        // Convert response to expected type
-        C::Response::try_from(response_bytes).map_err(Into::into)
+        // Convert to response enum
+        let response = C::Response::try_from(response_bytes).map_err(Into::into)?;
+
+        // Convert Response to ResultType
+        Ok(response.into())
     }
 
     /// Get current security level

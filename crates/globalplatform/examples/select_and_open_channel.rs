@@ -3,7 +3,7 @@
 //! This example connects to a PC/SC reader, selects the ISD, and opens a secure channel.
 
 use nexum_apdu_core::CardExecutor;
-use nexum_apdu_globalplatform::GlobalPlatform;
+use nexum_apdu_globalplatform::{GlobalPlatform, commands::select::SelectOk};
 use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -49,30 +49,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Select the Card Manager
     println!("Selecting Card Manager...");
-    let select_response = gp.select_card_manager()?;
+    let select_response = gp.select_card_manager()??;
 
-    if select_response.is_success() {
-        println!("Card Manager selected successfully.");
+    let SelectOk::Success { fci } = select_response;
+    println!("Card Manager selected successfully.");
 
-        // Print FCI information if available
-        println!("FCI data: {}", hex::encode_upper(select_response.fci()));
+    // Print FCI information if available
+    println!("FCI data: {}", hex::encode_upper(fci));
 
-        // Open secure channel
-        println!("\nOpening secure channel...");
-        match gp.open_secure_channel() {
-            Ok(_) => {
-                println!("Secure channel established successfully!");
-                println!("Card is ready for management operations.");
-            }
-            Err(e) => {
-                println!("Failed to open secure channel: {:?}", e);
-                println!("The card might be using non-default keys or might not support SCP02.");
-            }
+    // Open secure channel
+    println!("\nOpening secure channel...");
+    match gp.open_secure_channel() {
+        Ok(_) => {
+            println!("Secure channel established successfully!");
+            println!("Card is ready for management operations.");
         }
-    } else {
-        println!("Failed to select Card Manager!");
-        println!("Response: {:?}", select_response);
-        println!("This might not be a GlobalPlatform-compatible card.");
+        Err(e) => {
+            println!("Failed to open secure channel: {:?}", e);
+            println!("The card might be using non-default keys or might not support SCP02.");
+        }
     }
 
     Ok(())

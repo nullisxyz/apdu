@@ -11,13 +11,14 @@ use cipher::Key;
 use nexum_apdu_core::prelude::{Executor, ResponseAwareExecutor, SecureChannelExecutor};
 use nexum_apdu_core::{Bytes, Command, StatusWord};
 
+use crate::commands::delete::DeleteResult;
+use crate::commands::get_status::GetStatusResult;
+use crate::commands::install::InstallResult;
+use crate::commands::select::SelectResult;
 use crate::crypto::Scp02;
 use crate::{
     Error, Result,
-    commands::{
-        DeleteCommand, DeleteResponse, GetStatusCommand, GetStatusResponse, InstallCommand,
-        InstallResponse, LoadCommand, LoadResponse, SelectCommand, SelectResponse,
-    },
+    commands::{DeleteCommand, GetStatusCommand, InstallCommand, LoadCommand, SelectCommand},
     constants::{SECURITY_DOMAIN_AID, get_status_p1, load_p1},
     load::{CapFileInfo, LoadCommandStream},
     secure_channel::create_secure_channel_provider,
@@ -69,12 +70,12 @@ where
     }
 
     /// Select the card manager (ISD)
-    pub fn select_card_manager(&mut self) -> Result<SelectResponse> {
+    pub fn select_card_manager(&mut self) -> Result<SelectResult> {
         self.select_application(SECURITY_DOMAIN_AID)
     }
 
     /// Select an application by AID
-    pub fn select_application(&mut self, aid: &[u8]) -> Result<SelectResponse> {
+    pub fn select_application(&mut self, aid: &[u8]) -> Result<SelectResult> {
         // Create SELECT command
         let cmd = SelectCommand::with_aid(aid.to_vec());
 
@@ -102,25 +103,25 @@ where
     }
 
     /// Delete an object
-    pub fn delete_object(&mut self, aid: &[u8]) -> Result<DeleteResponse> {
+    pub fn delete_object(&mut self, aid: &[u8]) -> Result<DeleteResult> {
         let cmd = DeleteCommand::delete_object(aid);
         Ok(self.executor.execute(&cmd)?)
     }
 
     /// Delete an object and related objects
-    pub fn delete_object_and_related(&mut self, aid: &[u8]) -> Result<DeleteResponse> {
+    pub fn delete_object_and_related(&mut self, aid: &[u8]) -> Result<DeleteResult> {
         let cmd = DeleteCommand::delete_object_and_related(aid);
         Ok(self.executor.execute(&cmd)?)
     }
 
     /// Get the status of applications
-    pub fn get_applications_status(&mut self) -> Result<GetStatusResponse> {
+    pub fn get_applications_status(&mut self) -> Result<GetStatusResult> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::APPLICATIONS);
         Ok(self.executor.execute(&cmd)?)
     }
 
     /// Get the status of load files
-    pub fn get_load_files_status(&mut self) -> Result<GetStatusResponse> {
+    pub fn get_load_files_status(&mut self) -> Result<GetStatusResult> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::EXEC_LOAD_FILES);
         Ok(self.executor.execute(&cmd)?)
     }
@@ -130,7 +131,7 @@ where
         &mut self,
         package_aid: &[u8],
         security_domain_aid: Option<&[u8]>,
-    ) -> Result<InstallResponse> {
+    ) -> Result<InstallResult> {
         // Use ISD if no security domain AID provided
         let sd_aid = security_domain_aid.unwrap_or(SECURITY_DOMAIN_AID);
 
@@ -145,7 +146,7 @@ where
         applet_aid: &[u8],
         instance_aid: &[u8],
         params: &[u8],
-    ) -> Result<InstallResponse> {
+    ) -> Result<InstallResult> {
         // Use empty privileges
         let privileges = &[0x00];
 
@@ -186,16 +187,14 @@ where
             let cmd = LoadCommand::with_block_data(p1, block_number, block_data.to_vec());
 
             // Execute command
-            let response = self.executor.execute(&cmd)?;
+            let _ = self
+                .executor
+                .execute(&cmd)?
+                .map_err(|_| Error::Other("Load failed"))?;
 
             // Call callback if provided
             if let Some(cb) = &mut callback {
                 cb(stream.current_block(), stream.blocks_count())?;
-            }
-
-            // Check response
-            if !matches!(response, LoadResponse::Success) {
-                return Err(Error::Other("Load failed"));
             }
         }
 
@@ -223,7 +222,8 @@ where
         let applet_aid = &info.applet_aids[applet_index];
 
         // First, install the package
-        self.install_for_load(&package_aid, None)?;
+        self.install_for_load(&package_aid, None)?
+            .map_err(|e| Error::Msg(e.to_string()))?;
 
         // Then load the CAP file
         self.load_cap_file(cap_file, callback)?;
@@ -234,7 +234,8 @@ where
             applet_aid,
             applet_aid, // using same AID for instance
             &[],        // empty params
-        )?;
+        )?
+        .map_err(|e| Error::Msg(e.to_string()))?;
 
         Ok(())
     }
@@ -257,7 +258,8 @@ where
         }
 
         // First, install the package
-        self.install_for_load(&package_aid, None)?;
+        self.install_for_load(&package_aid, None)?
+            .map_err(|e| Error::Msg(e.to_string()))?;
 
         // Then load the CAP file
         self.load_cap_file(&cap_file, callback)?;
@@ -270,7 +272,8 @@ where
                 applet_aid,
                 applet_aid, // using same AID for instance
                 &[],        // empty params
-            )?;
+            )?
+            .map_err(|e| Error::Msg(e.to_string()))?;
         }
 
         Ok(())
@@ -341,12 +344,10 @@ where
         let cmd = InstallCommand::for_personalization(app_aid, data);
 
         // Execute the command
-        let response = self.executor.execute(&cmd)?;
-
-        // Check if successful
-        if !matches!(response, InstallResponse::Success) {
-            return Err(Error::Other("Personalization failed"));
-        }
+        let _ = self
+            .executor
+            .execute(&cmd)?
+            .map_err(|_| Error::Other("Personalization failed"))?;
 
         Ok(())
     }
@@ -426,6 +427,6 @@ mod tests {
 
         // Validate the response
         let response = result.unwrap();
-        assert!(response.is_success());
+        assert!(response.is_ok());
     }
 }
