@@ -24,9 +24,13 @@ pub trait ResponseAwareExecutor: Executor {
 pub trait SecureChannelExecutor: Executor {
     /// Open a secure channel with the card
     ///
-    /// This establishes a secure channel using the provided secure channel provider
-    /// and the requested security level.
+    /// This establishes a secure channel using the provided secure channel provider.
     fn open_secure_channel(&mut self, provider: &dyn SecureChannelProvider) -> crate::Result<()>;
+
+    /// Check if a secure channel is currently established
+    fn has_secure_channel(&self) -> bool {
+        self.security_level().has_mac_protection() || self.security_level().is_encrypted()
+    }
 }
 
 // Implementation for CardExecutor

@@ -78,17 +78,15 @@ where
         // Create SELECT command
         let cmd = SelectCommand::with_aid(aid.to_vec());
 
-        // Execute command and map errors
-        match self.executor.execute(&cmd) {
-            Ok(response) => {
-                // Store response for possible later use
-                if let Ok(raw_response) = self.executor.last_response() {
-                    self.last_response = Some(Bytes::copy_from_slice(raw_response));
-                }
-                Ok(response)
-            }
-            Err(e) => Err(Error::from(e)),
+        // Execute command using typed execution flow
+        let response = self.executor.execute(&cmd)?;
+
+        // Store response for possible later use
+        if let Ok(raw_response) = self.executor.last_response() {
+            self.last_response = Some(Bytes::copy_from_slice(raw_response));
         }
+
+        Ok(response)
     }
 
     /// Open a secure channel with default keys
@@ -322,7 +320,7 @@ where
         let get_data_cmd = Command::new(0x80, 0xCA, 0x00, 0x66).with_le(0x00);
 
         // Execute and get the response
-        let response = self.executor.transmit(&get_data_cmd.to_bytes())?;
+        let response = self.executor.transmit_raw(&get_data_cmd.to_bytes())?;
 
         // Check if the command was successful
         if response.len() >= 2 {

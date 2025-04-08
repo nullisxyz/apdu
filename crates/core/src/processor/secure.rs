@@ -131,6 +131,34 @@ impl SecurityLevel {
         self.encrypted = true;
         self
     }
+
+    /// Generate helpful error message about security level mismatch
+    pub fn error_message(&self, required: &Self) -> String {
+        let mut missing = Vec::new();
+
+        if required.authenticated && !self.authenticated {
+            missing.push("authentication");
+        }
+
+        if required.mac_protection && !self.has_mac_protection() {
+            missing.push("MAC protection");
+        }
+
+        if required.encrypted && !self.encrypted {
+            missing.push("encryption");
+        }
+
+        if missing.is_empty() {
+            "Unknown security level mismatch".to_string()
+        } else {
+            format!("Missing required security: {}", missing.join(", "))
+        }
+    }
+
+    /// Check if this security level is none (no security)
+    pub const fn is_none(&self) -> bool {
+        !self.authenticated && !self.mac_protection && !self.encrypted
+    }
 }
 
 impl PartialOrd for SecurityLevel {
@@ -169,8 +197,6 @@ pub trait SecureChannelProvider: Send + Sync + fmt::Debug {
 }
 
 /// Generic secure channel base trait with common functionality
-///
-/// This trait extends CommandProcessor with secure channel specific methods
 pub trait SecureChannel: CommandProcessor + DynClone {
     /// Check if the secure channel is established
     fn is_established(&self) -> bool;
@@ -180,6 +206,15 @@ pub trait SecureChannel: CommandProcessor + DynClone {
 
     /// Reestablish a closed channel
     fn reestablish(&mut self) -> crate::Result<()>;
+
+    /// Get the current security level provided by this channel
+    fn current_security_level(&self) -> SecurityLevel {
+        if self.is_established() {
+            self.security_level()
+        } else {
+            SecurityLevel::none()
+        }
+    }
 }
 
 /// A base secure channel implementation that can be extended

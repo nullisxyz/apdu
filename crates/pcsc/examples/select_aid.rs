@@ -44,7 +44,7 @@ fn select_aid(
     println!("Selecting AID: {}", aid_hex);
 
     // Send command and receive response
-    let response = executor.transmit(&select_cmd.to_bytes())?;
+    let response = executor.transmit_raw(&select_cmd.to_bytes())?;
 
     // Parse response as a Response object
     let resp = nexum_apdu_core::Response::from_bytes(&response)?;

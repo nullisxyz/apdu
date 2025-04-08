@@ -143,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Selecting AID: {}", hex::encode_upper(&aid));
 
                 // Execute command
-                match executor.transmit(&select_cmd.to_bytes()) {
+                match executor.transmit_raw(&select_cmd.to_bytes()) {
                     Ok(response_bytes) => {
                         // Clone to avoid borrow issues with Response::from_bytes
                         let response_data = response_bytes.to_vec();
@@ -174,7 +174,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         // Execute raw APDU
-                        match executor.transmit(&command_bytes) {
+                        match executor.transmit_raw(&command_bytes) {
                             Ok(response_bytes) => {
                                 // Clone to avoid borrow issues with Response::from_bytes
                                 let response_data = response_bytes.to_vec();

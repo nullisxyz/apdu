@@ -7,7 +7,7 @@ pub mod ext;
 
 use std::fmt;
 
-use crate::{Error, Result};
+use crate::{Error, Response, Result};
 use bytes::Bytes;
 use tracing::{debug, instrument, trace};
 
@@ -23,37 +23,64 @@ pub use ext::{ResponseAwareExecutor, SecureChannelExecutor};
 
 /// Trait for APDU command execution
 pub trait Executor: Send + Sync + fmt::Debug {
-    /// Transmit an APDU command
+    /// Transmit a raw APDU command
     ///
-    /// This method handles protocol details including routing through
-    /// command processors and secure channels if established.
+    /// This is the lowest level public transmission method.
     #[instrument(level = "trace", skip(self), fields(executor = std::any::type_name::<Self>()))]
-    fn transmit(&mut self, command: &[u8]) -> Result<Bytes> {
-        trace!(command = ?hex::encode(command), "Transmitting command");
-        let response = self.do_transmit(command);
+    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes> {
+        trace!(command = ?hex::encode(command), "Transmitting raw command");
+        let response = self.do_transmit_raw(command);
         match &response {
             Ok(bytes) => {
-                trace!(response = ?hex::encode(bytes), "Received response");
+                trace!(response = ?hex::encode(bytes), "Received raw response");
             }
             Err(err) => {
-                debug!(error = ?err, "Error during transmission");
+                debug!(error = ?err, "Error during raw transmission");
             }
         }
         response
     }
 
-    /// Internal implementation of transmit
-    fn do_transmit(&mut self, command: &[u8]) -> Result<Bytes>;
+    /// Internal implementation of transmit_raw
+    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes>;
 
-    /// Execute a typed APDU command
+    /// Transmit a generic Command and return a Response
+    ///
+    /// This is the mid-level transmission method that works with Command and Response objects.
+    #[instrument(level = "trace", skip(self), fields(executor = std::any::type_name::<Self>()))]
+    fn transmit(&mut self, command: &Command) -> Result<Response> {
+        trace!(command = ?command, "Transmitting command");
+        let command_bytes = command.to_bytes();
+        let response_bytes = self.transmit_raw(&command_bytes)?;
+        let response = Response::from_bytes(&response_bytes)?;
+        trace!(response = ?response, "Received response");
+        Ok(response)
+    }
+
+    /// Execute a typed APDU command and return a typed response
+    ///
+    /// This is the highest level transmission method for type-safe APDU exchanges.
+    /// It automatically checks security requirements if the command requires it.
     fn execute<C>(&mut self, command: &C) -> Result<C::Response>
     where
         C: ApduCommand,
         C::Response: TryFrom<Bytes>,
         <C::Response as TryFrom<Bytes>>::Error: Into<Error>,
     {
+        // Check security level requirement
+        let required_level = command.required_security_level();
+        let current_level = self.security_level();
+
+        // Verify security level is sufficient
+        if !required_level.is_none() && !current_level.satisfies(&required_level) {
+            return Err(Error::other(required_level.error_message(&current_level)));
+        }
+
+        // Get command bytes and transmit
         let command_bytes = command.to_bytes();
-        let response_bytes = self.transmit(&command_bytes)?;
+        let response_bytes = self.transmit_raw(&command_bytes)?;
+
+        // Convert response to expected type
         C::Response::try_from(response_bytes).map_err(Into::into)
     }
 
@@ -148,34 +175,28 @@ impl<T: CardTransport> CardExecutor<T> {
 }
 
 impl<T: CardTransport> Executor for CardExecutor<T> {
-    fn do_transmit(&mut self, command: &[u8]) -> Result<Bytes> {
-        // Parse the command bytes into a Command
-        let command = Command::from_bytes(command)?;
-
-        // If we have processors, use them
+    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes> {
+        // Pass command to the command processor chain if any are active
         if !self.processors.is_empty() {
-            // Find the first active processor (process from end of chain)
-            for i in (0..self.processors.len()).rev() {
-                if self.processors[i].is_active() {
-                    // Get mutable reference to the processor
-                    let processor = &mut self.processors[i];
-
-                    // Process the command through this processor
-                    let response = processor.process_command(&command, &mut self.transport)?;
-
-                    // Convert Response to Bytes for compatibility with existing API
-                    let response_bytes: Bytes = response.into();
-
-                    // Save response and return
-                    self.last_response = Some(response_bytes.clone());
-                    return Ok(response_bytes);
+            // Try to parse the command bytes into a Command
+            if let Ok(command_obj) = Command::from_bytes(command) {
+                // Find the first active processor (process from end of chain)
+                for i in (0..self.processors.len()).rev() {
+                    if self.processors[i].is_active() {
+                        // Process the command through this processor
+                        let processor = &mut self.processors[i];
+                        let response =
+                            processor.process_command(&command_obj, &mut self.transport)?;
+                        let response_bytes: Bytes = response.into();
+                        self.last_response = Some(response_bytes.clone());
+                        return Ok(response_bytes);
+                    }
                 }
             }
         }
 
-        // If no processors or none active, use transport directly
-        let command_bytes = command.to_bytes();
-        let response = self.transport.transmit_raw(&command_bytes)?;
+        // If no processors or parsing failed, use transport directly
+        let response = self.transport.transmit_raw(command)?;
         self.last_response = Some(response.clone());
         Ok(response)
     }
@@ -215,7 +236,7 @@ mod tests {
         let transport = MockTransport::with_response(Bytes::from_static(&[0x90, 0x00]));
         let mut executor = CardExecutor::new(transport);
 
-        let response = executor.transmit(&[0x00, 0xA4, 0x04, 0x00]).unwrap();
+        let response = executor.transmit_raw(&[0x00, 0xA4, 0x04, 0x00]).unwrap();
         assert_eq!(response.as_ref(), &[0x90, 0x00]);
     }
 
@@ -227,7 +248,7 @@ mod tests {
         // Add an identity processor
         executor.add_processor(Box::new(IdentityProcessor));
 
-        let response = executor.transmit(&[0x00, 0xA4, 0x04, 0x00]).unwrap();
+        let response = executor.transmit_raw(&[0x00, 0xA4, 0x04, 0x00]).unwrap();
         assert_eq!(response.as_ref(), &[0x90, 0x00]);
     }
 }

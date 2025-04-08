@@ -18,9 +18,7 @@ use tracing::{debug, trace};
 pub trait CardTransport: Send + Sync + fmt::Debug {
     /// Send raw APDU bytes to card and return response bytes
     ///
-    /// This method should handle the low-level communication with the card
-    /// but should not interpret the contents or handle protocol-specific
-    /// operations like GET RESPONSE.
+    /// This is the lowest level transmission method that should only deal with raw bytes.
     fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError> {
         trace!(command = ?hex::encode(command), "Transmitting raw command");
         let result = self.do_transmit_raw(command);
@@ -36,7 +34,6 @@ pub trait CardTransport: Send + Sync + fmt::Debug {
     }
 
     /// Internal implementation of transmit_raw
-    /// This is the method that concrete implementations should override
     fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError>;
 
     /// Check if the transport is connected to a physical card
