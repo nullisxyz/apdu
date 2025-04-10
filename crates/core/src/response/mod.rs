@@ -118,7 +118,7 @@ impl ApduResponse for Response {
     }
 
     fn from_bytes(data: &Bytes) -> Result<Self, ResponseError> {
-        Self::from_bytes(data)
+        Response::from_bytes(data)
     }
 }
 
