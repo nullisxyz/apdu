@@ -85,13 +85,13 @@ impl MockTransport {
 impl CardTransport for MockTransport {
     fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError> {
         if !self.connected {
-            return Err(TransportError::Connection)?;
+            return Err(TransportError::Connection);
         }
 
         self.commands.push(Bytes::copy_from_slice(command));
 
         if self.responses.is_empty() {
-            return Err(TransportError::Transmission)?;
+            return Err(TransportError::Transmission);
         }
 
         // Either clone the single response or take the next one
