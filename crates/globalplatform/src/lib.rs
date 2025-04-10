@@ -27,9 +27,6 @@ pub use session::{Keys, Session};
 // Re-export from nexum_apdu_core for convenience
 pub use nexum_apdu_core::{ResponseAwareExecutor, SecureChannelExecutor};
 
-// Export DefaultKeys for easy initialization
-pub use application::DefaultKeys;
-
 // Export main commands
 pub use commands::{
     DeleteCommand, DeleteResponse, GetStatusCommand, GetStatusResponse, InitializeUpdateCommand,

@@ -92,7 +92,7 @@ apdu_pair! {
 
             methods {
                 /// Get the TLV data
-                pub fn tlv_data(&self) -> Option<&[u8]> {
+                pub const fn tlv_data(&self) -> Option<&Vec<u8>> {
                     match self {
                         Self::Success { tlv_data } | Self::MoreData { tlv_data, .. } => Some(tlv_data),
                         _ => None,
@@ -303,7 +303,7 @@ mod tests {
 
         let response = GetStatusResponse::from_bytes(&response_data).unwrap();
         assert!(matches!(response, GetStatusResponse::Success { .. }));
-        assert_eq!(response.tlv_data(), Some(tlv_data.as_ref()));
+        assert_eq!(response.tlv_data(), Some(tlv_data.to_vec().as_ref()));
         assert!(!response.has_more_data());
 
         // Test more data available
@@ -314,7 +314,7 @@ mod tests {
 
         let response = GetStatusResponse::from_bytes(&response_data).unwrap();
         assert!(matches!(response, GetStatusResponse::MoreData { .. }));
-        assert_eq!(response.tlv_data(), Some(tlv_data.as_ref()));
+        assert_eq!(response.tlv_data(), Some(tlv_data.to_vec().as_ref()));
         assert!(response.has_more_data());
         assert_eq!(response.remaining_bytes(), Some(0x20));
     }

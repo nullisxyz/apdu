@@ -7,7 +7,6 @@ use std::path::Path;
 
 use nexum_apdu_core::ApduCommand;
 
-use cipher::Key;
 use nexum_apdu_core::prelude::{Executor, ResponseAwareExecutor, SecureChannelExecutor};
 use nexum_apdu_core::{Bytes, Command, StatusWord};
 
@@ -15,7 +14,6 @@ use crate::commands::delete::DeleteResult;
 use crate::commands::get_status::GetStatusResult;
 use crate::commands::install::InstallResult;
 use crate::commands::select::SelectResult;
-use crate::crypto::Scp02;
 use crate::{
     Error, Result,
     commands::{DeleteCommand, GetStatusCommand, InstallCommand, LoadCommand, SelectCommand},
@@ -24,23 +22,6 @@ use crate::{
     secure_channel::create_secure_channel_provider,
     session::{Keys, Session},
 };
-
-/// Default GlobalPlatform keys
-#[derive(Debug, Clone, Copy)]
-pub struct DefaultKeys;
-
-impl DefaultKeys {
-    /// Create a new set of default GlobalPlatform keys
-    pub fn new() -> Keys {
-        // Default GlobalPlatform test key
-        let key = [
-            0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D,
-            0x4E, 0x4F,
-        ];
-        let key = Key::<Scp02>::from_slice(&key);
-        Keys::from_single_key(*key)
-    }
-}
 
 /// GlobalPlatform card management application
 #[allow(missing_debug_implementations)]
@@ -92,7 +73,7 @@ where
 
     /// Open a secure channel with default keys
     pub fn open_secure_channel(&mut self) -> Result<()> {
-        self.open_secure_channel_with_keys(&DefaultKeys::new())
+        self.open_secure_channel_with_keys(&Keys::default())
     }
 
     /// Open a secure channel with specific keys and security level

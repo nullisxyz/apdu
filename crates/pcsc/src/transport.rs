@@ -99,7 +99,7 @@ impl PcscTransport {
     }
 
     /// Get the reader name
-    pub fn reader_name(&self) -> &str {
+    pub const fn reader_name(&self) -> &String {
         &self.reader_name
     }
 

@@ -204,7 +204,7 @@ impl CommandProcessor for GPSecureChannel {
         transport: &mut dyn CardTransport,
     ) -> Result<Response, ProcessorError> {
         if !self.established {
-            return Err(ProcessorError::session("Secure channel not established").into());
+            return Err(ProcessorError::session("Secure channel not established"));
         }
 
         trace!(command = ?command, "Processing command with GlobalPlatform SCP02");

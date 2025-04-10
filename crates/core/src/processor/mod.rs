@@ -176,7 +176,7 @@ impl CommandProcessor for GetResponseProcessor {
             }
 
             if chains >= self.max_chains && current_sw1 == 0x61 {
-                return Err(ProcessorError::ChainLimitExceeded).map_err(Into::into);
+                return Err(ProcessorError::ChainLimitExceeded);
             }
 
             // Construct final response with accumulated data and final status word

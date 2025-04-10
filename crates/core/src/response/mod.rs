@@ -97,7 +97,7 @@ impl Response {
         if self.is_success() {
             Ok(self.payload)
         } else {
-            Err(StatusError::new(self.status.sw1, self.status.sw2).into())
+            Err(StatusError::new(self.status.sw1, self.status.sw2))
         }
     }
 

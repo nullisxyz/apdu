@@ -8,9 +8,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use hex::FromHex;
 use nexum_apdu_core::CardExecutor;
 use nexum_apdu_globalplatform::crypto::Scp02;
-use nexum_apdu_globalplatform::{
-    DefaultKeys, GlobalPlatform, Keys, load::LoadCommandStream, operations,
-};
+use nexum_apdu_globalplatform::{GlobalPlatform, Keys, load::LoadCommandStream, operations};
 use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -182,7 +180,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Open secure channel with appropriate keys
     println!("Opening secure channel...");
     let keys = if cli.default_keys {
-        DefaultKeys::new()
+        Keys::default()
     } else if let Some(key_str) = cli.keys {
         let key_bytes = Vec::from_hex(key_str.replace(' ', ""))?;
         if key_bytes.len() != 16 {
@@ -194,7 +192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Keys::from_single_key(*key)
     } else {
         // Default to test keys
-        DefaultKeys::new()
+        Keys::default()
     };
 
     match gp.open_secure_channel_with_keys(&keys) {
