@@ -325,7 +325,7 @@ impl CommandProcessor for MockSecureChannel {
         transport: &mut dyn CardTransport,
     ) -> Result<Response, ProcessorError> {
         if !self.is_established() {
-            return Err(SecureProtocolError::session("Secure channel not established").into());
+            return Err(SecureProtocolError::Session("Secure channel not established").into());
         }
 
         // Create a secured version of the command

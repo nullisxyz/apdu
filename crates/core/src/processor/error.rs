@@ -69,25 +69,3 @@ pub enum SecureProtocolError {
     #[error("{0}")]
     Other(String),
 }
-
-impl SecureProtocolError {
-    /// Create a new protocol error
-    pub const fn protocol(message: &'static str) -> Self {
-        Self::Protocol(message)
-    }
-
-    /// Create a new authentication failed error
-    pub const fn authentication_failed(message: &'static str) -> Self {
-        Self::AuthenticationFailed(message)
-    }
-
-    /// Create a new session error
-    pub const fn session(message: &'static str) -> Self {
-        Self::Session(message)
-    }
-
-    /// Create a general other error
-    pub fn other<S: Into<String>>(message: S) -> Self {
-        Self::Other(message.into())
-    }
-}

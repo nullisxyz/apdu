@@ -185,7 +185,7 @@ impl GPSecureChannel {
         // Check if successful
         if !matches!(auth_response, ExternalAuthenticateResponse::Success) {
             self.established = false;
-            return Err(SecureProtocolError::authentication_failed(
+            return Err(SecureProtocolError::AuthenticationFailed(
                 "EXTERNAL AUTHENTICATE failed",
             ));
         }
@@ -207,7 +207,7 @@ impl CommandProcessor for GPSecureChannel {
         transport: &mut dyn CardTransport,
     ) -> Result<Response, ProcessorError> {
         if !self.established {
-            return Err(SecureProtocolError::session("Secure channel not established").into());
+            return Err(SecureProtocolError::Session("Secure channel not established").into());
         }
 
         trace!(command = ?command, "Processing command with GlobalPlatform SCP02");
@@ -247,7 +247,7 @@ impl SecureChannel for GPSecureChannel {
 
     fn reestablish(&mut self) -> Result<(), SecureProtocolError> {
         warn!("Reestablish not implemented for GlobalPlatform SCP02");
-        Err(SecureProtocolError::session(
+        Err(SecureProtocolError::Session(
             "Cannot reestablish GlobalPlatform SCP02 channel - a new session must be created",
         )
         .into())
@@ -300,7 +300,7 @@ impl SecureChannelProvider for GPSecureChannelProvider {
 
         // Create session directly from response
         let session = Session::from_response(&self.keys, &init_response, host_challenge)
-            .map_err(|e| SecureProtocolError::other(e.to_string()))?;
+            .map_err(|e| SecureProtocolError::Other(e.to_string()))?;
 
         // Create secure channel with session (not yet established)
         let mut channel = GPSecureChannel::new(session);

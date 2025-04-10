@@ -203,6 +203,6 @@ mod tests {
         let error = Response::error((0x6A, 0x82));
         let result = error.into_bytes_result();
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().status_word().to_u16(), 0x6A82);
+        assert_eq!(result.unwrap_err().status.to_u16(), 0x6A82);
     }
 }
