@@ -1,5 +1,7 @@
 //! Error types specific to APDU responses
 
+use crate::transport::TransportError;
+
 use super::status::StatusWord;
 
 /// Error for status words in APDU responses
@@ -47,6 +49,10 @@ impl StatusError {
 /// Error for APDU response processing
 #[derive(Debug, thiserror::Error)]
 pub enum ResponseError {
+    /// Underlying transport has caused an error
+    #[error(transparent)]
+    Transport(#[from] TransportError),
+
     /// Incomplete response (less than 2 bytes)
     #[error("Incomplete response")]
     Incomplete,

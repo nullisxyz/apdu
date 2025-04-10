@@ -16,7 +16,7 @@ pub type ExpectedLength = u8;
 
 use error::CommandError;
 
-use crate::{Error, prelude::SecurityLevel};
+use crate::prelude::SecurityLevel;
 
 /// Core trait for APDU commands
 pub trait ApduCommand {
@@ -277,7 +277,7 @@ impl Command {
 
 impl ApduCommand for Command {
     type Response = Bytes;
-    type ResultType = Result<Bytes, Error>;
+    type ResultType = Result<Bytes, CommandError>;
 
     fn class(&self) -> u8 {
         self.cla

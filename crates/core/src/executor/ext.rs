@@ -6,9 +6,11 @@
 use crate::{
     Bytes,
     executor::Executor,
-    processor::secure::SecureChannelProvider,
+    processor::{SecureProtocolError, secure::SecureChannelProvider},
     transport::{CardTransport, error::TransportError},
 };
+
+use super::{ApduExecutorErrors, CardExecutor};
 
 /// Extension trait for executors that support access to the last response
 pub trait ResponseAwareExecutor: Executor {
@@ -17,7 +19,7 @@ pub trait ResponseAwareExecutor: Executor {
     /// Returns the raw bytes of the last response received from the card.
     /// This is useful for protocols that need to access the raw response
     /// for cryptographic operations.
-    fn last_response(&self) -> crate::Result<&Bytes>;
+    fn last_response(&self) -> Result<&Bytes, TransportError>;
 }
 
 /// Extension trait for executors that support secure channels
@@ -25,7 +27,10 @@ pub trait SecureChannelExecutor: Executor {
     /// Open a secure channel with the card
     ///
     /// This establishes a secure channel using the provided secure channel provider.
-    fn open_secure_channel(&mut self, provider: &dyn SecureChannelProvider) -> crate::Result<()>;
+    fn open_secure_channel(
+        &mut self,
+        provider: &dyn SecureChannelProvider,
+    ) -> Result<(), SecureProtocolError>;
 
     /// Check if a secure channel is currently established
     fn has_secure_channel(&self) -> bool {
@@ -33,22 +38,19 @@ pub trait SecureChannelExecutor: Executor {
     }
 }
 
-// Implementation for CardExecutor
-impl<T: CardTransport> ResponseAwareExecutor for super::CardExecutor<T> {
-    fn last_response(&self) -> crate::Result<&Bytes> {
-        self.last_response().map_or_else(
-            || {
-                Err(TransportError::Other(
-                    "No last response available".to_string(),
-                ))?
-            },
-            Ok,
-        )
+// Implementation for CardExecutor with any error type
+impl<T: CardTransport, E: ApduExecutorErrors> ResponseAwareExecutor for CardExecutor<T, E> {
+    fn last_response(&self) -> Result<&Bytes, TransportError> {
+        self.last_response()
+            .ok_or_else(|| TransportError::Other("No last response available".to_string()))
     }
 }
 
-impl<T: CardTransport> SecureChannelExecutor for super::CardExecutor<T> {
-    fn open_secure_channel(&mut self, provider: &dyn SecureChannelProvider) -> crate::Result<()> {
-        Self::open_secure_channel(self, provider)
+impl<T: CardTransport, E: ApduExecutorErrors> SecureChannelExecutor for CardExecutor<T, E> {
+    fn open_secure_channel(
+        &mut self,
+        provider: &dyn SecureChannelProvider,
+    ) -> Result<(), SecureProtocolError> {
+        self.open_secure_channel(provider)
     }
 }

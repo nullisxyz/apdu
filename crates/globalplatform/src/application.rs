@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use nexum_apdu_core::ApduCommand;
+use nexum_apdu_core::{ApduCommand, ApduExecutorErrors};
 
 use nexum_apdu_core::prelude::{Executor, ResponseAwareExecutor, SecureChannelExecutor};
 use nexum_apdu_core::{Bytes, Command, StatusWord};
@@ -28,6 +28,7 @@ use crate::{
 pub struct GlobalPlatform<E>
 where
     E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+    Error: From<<E as ApduExecutorErrors>::Error>,
 {
     /// Card executor
     executor: E,
@@ -40,6 +41,7 @@ where
 impl<E> GlobalPlatform<E>
 where
     E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+    Error: From<<E as ApduExecutorErrors>::Error>,
 {
     /// Create a new GlobalPlatform instance
     pub const fn new(executor: E) -> Self {
@@ -203,8 +205,7 @@ where
         let applet_aid = &info.applet_aids[applet_index];
 
         // First, install the package
-        self.install_for_load(&package_aid, None)?
-            .map_err(|e| Error::Msg(e.to_string()))?;
+        self.install_for_load(&package_aid, None)??;
 
         // Then load the CAP file
         self.load_cap_file(cap_file, callback)?;
@@ -215,8 +216,7 @@ where
             applet_aid,
             applet_aid, // using same AID for instance
             &[],        // empty params
-        )?
-        .map_err(|e| Error::Msg(e.to_string()))?;
+        )??;
 
         Ok(())
     }
@@ -239,8 +239,7 @@ where
         }
 
         // First, install the package
-        self.install_for_load(&package_aid, None)?
-            .map_err(|e| Error::Msg(e.to_string()))?;
+        self.install_for_load(&package_aid, None)??;
 
         // Then load the CAP file
         self.load_cap_file(&cap_file, callback)?;
@@ -253,8 +252,7 @@ where
                 applet_aid,
                 applet_aid, // using same AID for instance
                 &[],        // empty params
-            )?
-            .map_err(|e| Error::Msg(e.to_string()))?;
+            )??;
         }
 
         Ok(())
@@ -397,7 +395,7 @@ mod tests {
         transport.add_response(mock_select_response());
 
         // Create executor with the transport
-        let executor = CardExecutor::new(transport);
+        let executor: CardExecutor<TestTransport, Error> = CardExecutor::new(transport);
 
         // Create GlobalPlatform instance
         let mut gp = GlobalPlatform::new(executor);

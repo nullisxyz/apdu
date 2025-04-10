@@ -166,7 +166,7 @@ impl CardTransport for PcscTransport {
         }
 
         // Try to reconnect
-        self.connect_card().map_err(TransportError::from)
+        self.connect_card().map_err(Into::into)
     }
 }
 

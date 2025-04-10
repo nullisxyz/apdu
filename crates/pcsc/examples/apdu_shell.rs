@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Connect to the reader
     let config = PcscConfig::default();
     let transport = manager.open_reader_with_config(reader.name(), config)?;
-    let mut executor = CardExecutor::new(transport);
+    let mut executor: CardExecutor<PcscTransport> = CardExecutor::new(transport);
 
     println!("\nAPDU Shell - Enter commands in hex format or 'help' for assistance");
     println!("Examples:");

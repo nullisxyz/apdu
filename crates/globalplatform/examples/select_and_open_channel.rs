@@ -2,9 +2,8 @@
 //!
 //! This example connects to a PC/SC reader, selects the ISD, and opens a secure channel.
 
-use nexum_apdu_core::CardExecutor;
-use nexum_apdu_globalplatform::{GlobalPlatform, commands::select::SelectOk};
-use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager};
+use nexum_apdu_globalplatform::{DefaultGlobalPlatform, commands::select::SelectOk};
+use nexum_apdu_transport_pcsc::PcscDeviceManager;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a PC/SC device manager
@@ -39,13 +38,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nUsing reader: {}", reader.name());
 
-    // Connect to the reader
-    let config = PcscConfig::default();
-    let transport = manager.open_reader_with_config(reader.name(), config)?;
-    let executor = CardExecutor::new(transport);
-
     // Create GlobalPlatform instance
-    let mut gp = GlobalPlatform::new(executor);
+    let mut gp = DefaultGlobalPlatform::connect(reader.name())?;
 
     // Select the Card Manager
     println!("Selecting Card Manager...");

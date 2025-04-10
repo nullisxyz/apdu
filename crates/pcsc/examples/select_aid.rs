@@ -36,7 +36,7 @@ fn select_aid(
     executor: &mut CardExecutor<impl nexum_apdu_core::CardTransport>,
     aid_hex: &str,
 ) -> Result<String, Error> {
-    let aid = hex::decode(aid_hex).map_err(|_| Error::Parse("Invalid AID hex"))?;
+    let aid = hex::decode(aid_hex).map_err(|_| Error::Other("Invalid AID hex"))?;
 
     // Create SELECT command with AID
     let select_cmd = Command::new_with_data(0x00, 0xA4, 0x04, 0x00, aid.clone());

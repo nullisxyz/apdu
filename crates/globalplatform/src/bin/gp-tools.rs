@@ -7,6 +7,7 @@ use cipher::Key;
 use clap::{Parser, Subcommand, ValueEnum};
 use hex::FromHex;
 use nexum_apdu_core::CardExecutor;
+use nexum_apdu_globalplatform::Error;
 use nexum_apdu_globalplatform::crypto::Scp02;
 use nexum_apdu_globalplatform::{GlobalPlatform, Keys, load::LoadCommandStream, operations};
 use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager};
@@ -167,7 +168,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to the card
     let transport = manager.open_reader_with_config(reader.name(), config)?;
-    let executor = CardExecutor::new(transport);
+    let executor: CardExecutor<_, Error> = CardExecutor::new(transport);
 
     // Create GlobalPlatform instance
     let mut gp = GlobalPlatform::new(executor);

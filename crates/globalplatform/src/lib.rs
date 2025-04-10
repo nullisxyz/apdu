@@ -21,6 +21,8 @@ pub mod util;
 pub use application::GlobalPlatform;
 pub use error::{Error, Result};
 pub use load::CapFileInfo;
+use nexum_apdu_core::{CardExecutor, Executor, transport::TransportError};
+use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager, PcscTransport};
 pub use secure_channel::GPSecureChannel;
 pub use session::{Keys, Session};
 
@@ -34,10 +36,31 @@ pub use commands::{
     SelectCommand, SelectResponse,
 };
 
+pub trait GlobalPlatformExecutor: Executor + ResponseAwareExecutor + SecureChannelExecutor {}
+
+impl<T> GlobalPlatformExecutor for T where
+    T: Executor + ResponseAwareExecutor + SecureChannelExecutor
+{
+}
+
+pub type DefaultGlobalPlatform = GlobalPlatform<CardExecutor<PcscTransport, Error>>;
+
+impl DefaultGlobalPlatform {
+    pub fn connect(reader_name: &str) -> Result<Self> {
+        let config = PcscConfig::default();
+        let manager = PcscDeviceManager::new().map_err(TransportError::from)?;
+        let transport = manager
+            .open_reader_with_config(reader_name, config)
+            .map_err(TransportError::from)?;
+        let executor = CardExecutor::new(transport);
+        Ok(GlobalPlatform::new(executor))
+    }
+}
+
 /// Convenience functions for common operations
 pub mod operations {
     use nexum_apdu_core::prelude::Executor;
-    use nexum_apdu_core::{ResponseAwareExecutor, SecureChannelExecutor};
+    use nexum_apdu_core::{ApduExecutorErrors, ResponseAwareExecutor, SecureChannelExecutor};
 
     use crate::commands::get_status::{parse_applications, parse_load_files};
     use crate::{Error, GlobalPlatform, Result};
@@ -46,13 +69,13 @@ pub mod operations {
     pub fn connect_and_setup<E>(executor: E) -> Result<GlobalPlatform<E>>
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        Error: From<<E as ApduExecutorErrors>::Error>,
     {
         // Create GlobalPlatform instance
         let mut gp = GlobalPlatform::new(executor);
 
         // Select the Card Manager
-        gp.select_card_manager()?
-            .map_err(|e| Error::Msg(e.to_string()))?;
+        gp.select_card_manager()??;
 
         // Open secure channel with default keys
         gp.open_secure_channel()?;
@@ -66,11 +89,10 @@ pub mod operations {
     ) -> Result<Vec<crate::commands::get_status::ApplicationInfo>>
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        Error: From<<E as ApduExecutorErrors>::Error>,
     {
-        let response = gp
-            .get_applications_status()?
-            .map_err(|e| Error::Msg(e.to_string()))?;
-        Ok(parse_applications(response))
+        let response = gp.get_applications_status()?;
+        Ok(parse_applications(response?))
     }
 
     /// List all packages on the card
@@ -79,23 +101,20 @@ pub mod operations {
     ) -> Result<Vec<crate::commands::get_status::LoadFileInfo>>
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        Error: From<<E as ApduExecutorErrors>::Error>,
     {
-        let response = gp
-            .get_load_files_status()?
-            .map_err(|e| Error::Msg(e.to_string()))?;
-        Ok(parse_load_files(response))
+        let response = gp.get_load_files_status()?;
+        Ok(parse_load_files(response?))
     }
 
     /// Delete a package and all of its applications
     pub fn delete_package<E>(gp: &mut GlobalPlatform<E>, aid: &[u8]) -> Result<()>
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        Error: From<<E as ApduExecutorErrors>::Error>,
     {
         // Delete the package and all related applications
-        let _ = gp
-            .delete_object_and_related(aid)?
-            .map_err(|e| Error::Msg(e.to_string()));
-
+        let _ = gp.delete_object_and_related(aid)?;
         Ok(())
     }
 
@@ -108,6 +127,7 @@ pub mod operations {
     ) -> Result<()>
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        Error: From<<E as ApduExecutorErrors>::Error>,
     {
         // First analyze the CAP file to extract package and applet AIDs
         let cap_info = gp.analyze_cap_file(&cap_path)?;
@@ -117,8 +137,7 @@ pub mod operations {
             .ok_or(Error::CapFile("Missing package AID"))?;
 
         // Install for load
-        gp.install_for_load(&package_aid, None)?
-            .map_err(|e| Error::Msg(e.to_string()))?;
+        gp.install_for_load(&package_aid, None)??;
 
         // Load the CAP file
         gp.load_cap_file(&cap_path, None)?;
@@ -132,8 +151,7 @@ pub mod operations {
                     applet_aid,
                     applet_aid,
                     install_params,
-                )?
-                .map_err(|e| Error::Msg(e.to_string()))?;
+                )??;
             }
         }
 

@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to the reader
     let transport = manager.open_reader(reader.name())?;
-    let mut executor = CardExecutor::new(transport);
+    let mut executor: CardExecutor<PcscTransport> = CardExecutor::new(transport);
 
     // Get ATR if available
     let transport = executor.transport();
