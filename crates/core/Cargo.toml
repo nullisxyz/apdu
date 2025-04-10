@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
-homepage.workspace = true
 repository.workspace = true
 keywords.workspace = true
 description = "Core traits and types for APDU (Application Protocol Data Unit) operations"
