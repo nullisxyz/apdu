@@ -914,14 +914,6 @@ pub(crate) fn expand_response(
                 response.to_result()
             }
         }
-
-        impl From<#error_enum_name> for nexum_apdu_core::Error {
-            fn from(err: #error_enum_name) -> Self {
-                nexum_apdu_core::Error::Response(
-                    nexum_apdu_core::response::error::ResponseError::Message(err.to_string())
-                )
-            }
-        }
     };
 
     Ok((tokens, ok_enum_name, error_enum_name, result_type_name))

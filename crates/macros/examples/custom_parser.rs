@@ -1,7 +1,9 @@
 //! Example demonstrating a custom parser with the new Result-based API
 
 use bytes::Bytes;
-use nexum_apdu_core::{ApduCommand, Error as ApduError, StatusWord};
+use nexum_apdu_core::{
+    ApduCommand, Error as ApduError, StatusWord, response::error::ResponseError,
+};
 use nexum_apdu_macros::apdu_pair;
 
 apdu_pair! {
@@ -228,10 +230,12 @@ fn main() {
         .map_err(|e| ApduError::Response(e))?;
 
         // Convert to Result
-        let verify_result: VerifyPinResult = verify_response.into();
+        let verify_result: VerifyPinOk = verify_response
+            .to_result()
+            .map_err(|e| ApduError::Response(ResponseError::Message(e.to_string())))?;
 
         // Use ? to propagate errors
-        match verify_result? {
+        match verify_result {
             VerifyPinOk::Verified => {
                 println!("PIN verification successful");
                 Ok(())
