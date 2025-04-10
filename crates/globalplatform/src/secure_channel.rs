@@ -231,6 +231,10 @@ impl CommandProcessor for GPSecureChannel {
     fn is_active(&self) -> bool {
         self.established
     }
+
+    fn security_level(&self) -> SecurityLevel {
+        self.security_level
+    }
 }
 
 impl SecureChannel for GPSecureChannel {
