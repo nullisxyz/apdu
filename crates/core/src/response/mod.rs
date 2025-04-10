@@ -55,7 +55,7 @@ impl Response {
     }
 
     /// Create a success response
-    pub fn success(payload: Option<Bytes>) -> Self {
+    pub const fn success(payload: Option<Bytes>) -> Self {
         Self {
             payload,
             status: StatusWord::new(0x90, 0x00),

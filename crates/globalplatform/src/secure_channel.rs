@@ -249,8 +249,7 @@ impl SecureChannel for GPSecureChannel {
         warn!("Reestablish not implemented for GlobalPlatform SCP02");
         Err(SecureProtocolError::Session(
             "Cannot reestablish GlobalPlatform SCP02 channel - a new session must be created",
-        )
-        .into())
+        ))
     }
 }
 
