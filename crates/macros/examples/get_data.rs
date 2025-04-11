@@ -2,7 +2,7 @@
 //! Example of using the apdu_pair macro with the new Result-based API
 
 use bytes::Bytes;
-use nexum_apdu_core::ApduCommand;
+use nexum_apdu_core::{ApduCommand, ApduResponse};
 use nexum_apdu_macros::apdu_pair;
 
 apdu_pair! {
@@ -103,7 +103,7 @@ fn main() {
 
     // Simulate a successful response
     let response_bytes = Bytes::from_static(&[0x01, 0x02, 0x03, 0x04, 0x90, 0x00]);
-    let result = GetDataResult::from_bytes(&response_bytes).expect("Failed to parse response");
+    let result = GetDataResult::from_bytes(&response_bytes).unwrap();
 
     // Convert to inner result and use our custom methods
     match result.clone().into_inner() {

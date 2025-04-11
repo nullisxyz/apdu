@@ -1,7 +1,7 @@
 //! Example demonstrating a custom parser with the new Result-based API
 
 use bytes::Bytes;
-use nexum_apdu_core::{ApduCommand, Error as ApduError, response::error::ResponseError};
+use nexum_apdu_core::{ApduCommand, ApduResponse, Error as ApduError};
 use nexum_apdu_macros::apdu_pair;
 
 apdu_pair! {
@@ -149,15 +149,12 @@ fn main() {
             Bytes::from_static(&[0x69, 0x83])
         };
 
-        // Parse and convert to Result
-        let response =
-            VerifyPinResult::from_bytes(&response_bytes).expect("Failed to parse response");
-
-        response
+        // Parse and return the result directly (no longer need to unwrap)
+        VerifyPinResult::from_bytes(&response_bytes).unwrap()
     }
 
     // Try with correct PIN
-    match verify_pin(&[0x31, 0x32, 0x33, 0x34], 3).as_inner() {
+    match verify_pin(&[0x31, 0x32, 0x33, 0x34], 3).into_inner() {
         Ok(ok) => match ok {
             VerifyPinOk::Verified => {
                 println!("PIN verified successfully!");
@@ -208,14 +205,13 @@ fn main() {
     // Function that uses our new API with question mark operator
     fn authenticate_user(pin: &[u8]) -> Result<(), ApduError> {
         // First check if PIN is blocked by querying remaining attempts
-        let query_result = VerifyPinResult::from_bytes(&[0x63, 0xC2])
-            .map_err(|e| ApduError::Response(ResponseError::Message(e.to_string())))?;
+        let query_result = VerifyPinResult::from_bytes(&Bytes::from_static(&[0x63, 0xC2]))?;
 
-        // Get the query result - now more ergonomic with deref
-        match &*query_result {
+        // Get the inner result - now more ergonomic with deref
+        match *query_result {
             Ok(VerifyPinOk::AttemptsRemaining { count }) => {
                 println!("PIN attempts remaining: {}", count);
-                if *count == 0 {
+                if count == 0 {
                     return Err(ApduError::Other("PIN is blocked"));
                 }
             }
@@ -225,19 +221,17 @@ fn main() {
         }
 
         // Now try to verify the PIN - more ergonomic from_bytes accepting any AsRef<[u8]>
+        let success = Bytes::from_static(&[0x90, 0x00]);
+        let fail = Bytes::from_static(&[0x63, 0xC1]);
         let verify_result = VerifyPinResult::from_bytes(if pin == [0x31, 0x32, 0x33, 0x34] {
-            &[0x90, 0x00] // Success
+            &success
         } else {
-            &[0x63, 0xC1] // 1 attempt left
+            &fail // 1 attempt left
         })
-        .map_err(|e| ApduError::Response(ResponseError::Message(e.to_string())))?;
-
-        // Check result - now we can use ? directly with deref
-        let verify_ok = verify_result
-            .map_err(|e| ApduError::Response(ResponseError::Message(e.to_string())))?;
+        .unwrap();
 
         // Process success
-        match verify_ok {
+        match (*verify_result).as_ref().unwrap() {
             VerifyPinOk::Verified => {
                 println!("PIN verification successful");
                 Ok(())

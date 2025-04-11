@@ -452,6 +452,7 @@ dependencies = [
  "cbc-mac",
  "cipher",
  "clap",
+ "derive_more",
  "des",
  "hex",
  "hex-literal",

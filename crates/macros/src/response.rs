@@ -727,7 +727,7 @@ pub(crate) fn expand_response(
                 if ty_str.contains("Vec < u8 >") || ty_str.contains("bytes :: Bytes") {
                     // For Vec<u8> or bytes::Bytes, require payload to be present
                     quote! {
-                        #name: match response.payload() {
+                        #name: match data_payload {
                             Some(bytes) => bytes.to_vec(),
                             None => return Err(#error_enum_name::ResponseError(
                                 nexum_apdu_core::response::error::ResponseError::Message(
@@ -739,12 +739,12 @@ pub(crate) fn expand_response(
                 } else if ty_str.contains("Option < Vec < u8 > >") || ty_str.contains("Option < bytes :: Bytes >") {
                     // For Option<Vec<u8>> or Option<bytes::Bytes>, wrap in Some if present
                     quote! {
-                        #name: response.payload().map(|bytes| bytes.to_vec())
+                        #name: data_payload.map(|bytes| bytes.to_vec())
                     }
                 } else if ty_str.contains("String") {
                     // For String, try to convert from UTF-8 if present
                     quote! {
-                        #name: match response.payload() {
+                        #name: match data_payload {
                             Some(bytes) => std::str::from_utf8(bytes).map_err(|_|
                                 #error_enum_name::ResponseError(
                                     nexum_apdu_core::response::error::ResponseError::Message(
@@ -762,7 +762,7 @@ pub(crate) fn expand_response(
                 } else {
                     // Default to basic copy for other types, requiring payload
                     quote! {
-                        #name: match response.payload() {
+                        #name: match data_payload {
                             Some(_) => Default::default(),
                             None => return Err(#error_enum_name::ResponseError(
                                 nexum_apdu_core::response::error::ResponseError::Message(
@@ -798,57 +798,33 @@ pub(crate) fn expand_response(
         }
     });
 
-    // In the from_response method, check for custom parser first
-    let from_response_impl = if response.custom_parser.is_some() {
+    // Implementation of the parse_response method
+    let parse_response_impl = if response.custom_parser.is_some() {
+        // For custom parser, we use the provided parser
+        let custom_parser = response.custom_parser.as_ref().unwrap();
         quote! {
-            /// Convert a response to this result type
-            pub fn from_response(
-                response: &nexum_apdu_core::Response
-            ) -> Result<Self, #error_enum_name> {
-                // Use custom parser
-                Self::with_custom_parser(response)
+            /// Parse a response using the custom parser
+            fn parse_response(response: &nexum_apdu_core::Response) -> Result<#ok_enum_name, #error_enum_name> {
+                (#custom_parser)(response)
             }
         }
     } else {
+        // Standard parser implementation
         quote! {
-            /// Convert a response to this result type
-            pub fn from_response(
-                response: &nexum_apdu_core::Response
-            ) -> Result<Self, #error_enum_name> {
-                use nexum_apdu_core::ApduResponse;
-
+            /// Parse a response into the concrete enum
+            fn parse_response(response: &nexum_apdu_core::Response) -> Result<#ok_enum_name, #error_enum_name> {
                 let status = response.status();
                 let sw1 = status.sw1;
                 let sw2 = status.sw2;
+                let data_payload = response.payload();
 
-                // Match on status word to determine which variant to create
-                let result = match (sw1, sw2) {
+                match (sw1, sw2) {
                     #(#match_arms,)*
-                    // For unmatched status words, use the Unknown variant instead of returning an error
+                    // For unmatched status words, use the Unknown variant
                     _ => Err(#error_enum_name::Unknown { sw1, sw2 }),
-                };
-
-                Ok(Self(result))
+                }
             }
         }
-    };
-
-    // Custom parser method (only included if a custom parser is provided)
-    let with_custom_parser_method = if response.custom_parser.is_some() {
-        let custom_parser = response.custom_parser.as_ref().unwrap();
-        quote! {
-            /// Use the custom parser to process this response
-            pub fn with_custom_parser(
-                response: &nexum_apdu_core::Response
-            ) -> Result<Self, #error_enum_name> {
-                // The custom parser takes a Response and returns Result<OkEnum, ErrorEnum> directly
-                let inner_result = (#custom_parser)(response);
-
-                Ok(Self(inner_result))
-            }
-        }
-    } else {
-        quote! {}
     };
 
     // Generate the code
@@ -869,58 +845,54 @@ pub(crate) fn expand_response(
         }
 
         /// Result type for command responses - wraps a Result for better usability
-        #[derive(Debug, Clone, derive_more::Deref, derive_more::DerefMut)]
-        #vis struct #result_name(Result<#ok_enum_name, #error_enum_name>);
+        #[derive(Debug, Clone, derive_more::DerefMut, derive_more::Deref)]
+        #vis struct #result_name {
+            /// The wrapped result value
+            #[deref]
+            #[deref_mut]
+            inner: Result<#ok_enum_name, #error_enum_name>,
+            /// The response payload data if any
+            payload: Option<bytes::Bytes>,
+            /// The status word
+            status: nexum_apdu_core::StatusWord,
+        }
 
         impl #result_name {
-            /// Create a new result
-            pub fn new(result: Result<#ok_enum_name, #error_enum_name>) -> Self {
-                Self(result)
-            }
-
-            /// Parse response from raw bytes (any type that can be referenced as bytes)
-            pub fn from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, #error_enum_name> {
-                let bytes_ref = bytes.as_ref();
-                let bytes = bytes::Bytes::copy_from_slice(bytes_ref);
-
-                // Use existing Response::from_bytes to parse the bytes
-                Self::from_response(&nexum_apdu_core::Response::from_bytes(&bytes)?)
-            }
-
-            /// Unwrap the result to get the inner value
-            pub fn unwrap(self) -> Result<#ok_enum_name, #error_enum_name> {
-                self.0
+            /// Create a new result from an explicit Result and Response data
+            pub fn new(
+                inner: Result<#ok_enum_name, #error_enum_name>,
+                payload: Option<bytes::Bytes>,
+                status: nexum_apdu_core::StatusWord
+            ) -> Self {
+                Self { inner, payload, status }
             }
 
             /// Get the inner result by value
             pub fn into_inner(self) -> Result<#ok_enum_name, #error_enum_name> {
-                self.0
+                self.inner
             }
 
-            // Use the appropriate from_response implementation
-            #from_response_impl
-
-            // Only include the custom parser method if it was defined
-            #with_custom_parser_method
+            // Internal parser method
+            #parse_response_impl
 
             /// Get a reference to the inner result
             pub fn as_inner(&self) -> &Result<#ok_enum_name, #error_enum_name> {
-                &self.0
+                &self.inner
             }
 
             /// Get a mutable reference to the inner result
             pub fn as_inner_mut(&mut self) -> &mut Result<#ok_enum_name, #error_enum_name> {
-                &mut self.0
+                &mut self.inner
             }
 
             /// Check if this is an Ok result
             pub fn is_ok(&self) -> bool {
-                self.0.is_ok()
+                self.inner.is_ok()
             }
 
             /// Check if this is an Err result
             pub fn is_err(&self) -> bool {
-                self.0.is_err()
+                self.inner.is_err()
             }
 
             /// Map the success value
@@ -928,7 +900,7 @@ pub(crate) fn expand_response(
             where
                 F: FnOnce(#ok_enum_name) -> U,
             {
-                self.0.map(f)
+                self.inner.map(f)
             }
 
             /// Map the error value
@@ -936,32 +908,78 @@ pub(crate) fn expand_response(
             where
                 F: FnOnce(#error_enum_name) -> O,
             {
-                self.0.map_err(f)
+                self.inner.map_err(f)
             }
         }
 
-        // Implement TryFrom<Bytes> to allow direct conversion from response bytes
+        // Implement ApduResponse trait
+        impl nexum_apdu_core::ApduResponse for #result_name {
+            fn payload(&self) -> &Option<bytes::Bytes> {
+                &self.payload
+            }
+
+            fn status(&self) -> nexum_apdu_core::StatusWord {
+                self.status
+            }
+
+            fn from_bytes(data: &bytes::Bytes) -> Result<Self, nexum_apdu_core::response::error::ResponseError> {
+                let response = nexum_apdu_core::Response::from_bytes(data)?;
+                let status = response.status();
+                let payload = response.payload().clone();
+
+                // Parse the response using our internal parse_response function
+                let inner = Self::parse_response(&response);
+
+                Ok(Self { inner, payload, status })
+            }
+        }
+
+        // Implement TryFrom<&nexum_apdu_core::Response> for converting from Response objects
+        impl TryFrom<&nexum_apdu_core::Response> for #result_name {
+            type Error = nexum_apdu_core::response::error::ResponseError;
+
+            fn try_from(response: &nexum_apdu_core::Response) -> Result<Self, Self::Error> {
+                let status = response.status();
+                let payload = response.payload().clone();
+
+                // Parse the response using our internal parse_response function
+                let inner = #result_name::parse_response(&response);
+
+                Ok(Self { inner, payload, status })
+            }
+        }
+
+        // Implement TryFrom for owned Response
+        impl TryFrom<nexum_apdu_core::Response> for #result_name {
+            type Error = nexum_apdu_core::response::error::ResponseError;
+
+            fn try_from(response: nexum_apdu_core::Response) -> Result<Self, Self::Error> {
+                Self::try_from(&response)
+            }
+        }
+
+        // Implement TryFrom<bytes::Bytes> for direct conversion from bytes
         impl TryFrom<bytes::Bytes> for #result_name {
-            type Error = #error_enum_name;
+            type Error = nexum_apdu_core::response::error::ResponseError;
 
             fn try_from(bytes: bytes::Bytes) -> Result<Self, Self::Error> {
-                let response = nexum_apdu_core::Response::from_bytes(&bytes)
-                    .map_err(#error_enum_name::ResponseError)?;
-                Self::from_response(&response)
+                Self::from_bytes(&bytes)
             }
         }
 
-        // Implement From<Result> to convert from Result to our type
-        impl From<Result<#ok_enum_name, #error_enum_name>> for #result_name {
-            fn from(result: Result<#ok_enum_name, #error_enum_name>) -> Self {
-                Self(result)
+        // Implement TryFrom<&[u8]> for convenience
+        impl TryFrom<&[u8]> for #result_name {
+            type Error = nexum_apdu_core::response::error::ResponseError;
+
+            fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+                #result_name::from_bytes(&bytes::Bytes::copy_from_slice(bytes))
             }
         }
 
         // Implement Into<Result> to convert back to plain Result
         impl From<#result_name> for Result<#ok_enum_name, #error_enum_name> {
             fn from(wrapper: #result_name) -> Self {
-                wrapper.0
+                wrapper.inner
             }
         }
     };

@@ -30,12 +30,6 @@ pub trait ApduResponse: Sized {
     fn from_bytes(data: &Bytes) -> Result<Self, ResponseError>;
 }
 
-/// Trait for types that can be created from APDU response data
-pub trait FromApduResponse: Sized {
-    /// Convert raw APDU response data to this type
-    fn from_response(data: &Bytes) -> Result<Self, ResponseError>;
-}
-
 /// Basic APDU response structure
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Response {

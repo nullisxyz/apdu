@@ -168,6 +168,7 @@ fn expand_apdu_pair(pair: &ApduPair) -> Result<TokenStream2, TokenStream2> {
         #(#attrs)*
         mod #module_name {
             use super::*;
+            use nexum_apdu_core::prelude::*;
             use nexum_apdu_core::command::ExpectedLength;
             use nexum_apdu_core::processor::secure::SecurityLevel;
             use std::convert::TryFrom;

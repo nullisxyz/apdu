@@ -1,7 +1,7 @@
 //! Example of using the apdu_pair macro with the new Result-based API for Select command
 
 use bytes::Bytes;
-use nexum_apdu_core::ApduCommand;
+use nexum_apdu_core::prelude::*;
 use nexum_apdu_macros::apdu_pair;
 
 apdu_pair! {
@@ -97,14 +97,12 @@ fn main() {
     let response_bytes = Bytes::from([&fci_data[..], &[0x90, 0x00]].concat());
 
     // Parse raw bytes to SelectResult - now with improved error handling
-    let result = SelectResult::from_bytes(&response_bytes).expect("Failed to parse response");
-
-    // We can also directly use TryFrom
-    let result2 =
-        SelectResult::try_from(response_bytes.clone()).expect("Failed to convert response");
+    let result = SelectResult::from_bytes(&response_bytes)
+        .unwrap()
+        .into_inner();
 
     // Use our custom method on SelectOk when unwrapping
-    match result.into_inner() {
+    match result {
         Ok(ok) => {
             if ok.is_selected() {
                 // Using our custom method
@@ -125,11 +123,6 @@ fn main() {
         }
     }
 
-    // Using our custom method on SelectResult directly
-    if result2.is_ok() {
-        println!("Selection successful via custom helper method");
-    }
-
     // Example function showing idiomatic error handling with ? operator
     fn select_application(_aid: &[u8]) -> Result<Vec<u8>, SelectError> {
         // In a real application, this would use an executor
@@ -142,12 +135,11 @@ fn main() {
         ];
         let response_bytes = Bytes::from([&fci_data[..], &[0x90, 0x00]].concat());
 
-        // Parse to our wrapper and then immediately unwrap to the inner Result
-        // This lets us use ? on the Result<SelectOk, SelectError>
-        let result = SelectResult::from_bytes(&response_bytes)?.into_inner();
+        // Parse the bytes directly - no need for ? since from_bytes returns SelectResult
+        let result = SelectResult::from_bytes(&response_bytes).unwrap();
 
-        // Now we can use ? directly
-        let ok = result?;
+        // Use into_inner() and ? on the inner Result
+        let ok = result.into_inner()?;
 
         // Process the successful variant
         match ok {
@@ -167,16 +159,15 @@ fn main() {
     }
 
     // Demonstrate handling unknown status words
-    let unknown_response = Bytes::from_static(&[0x69, 0x85, 0x90, 0x00]);
+    let unknown_response = Bytes::from_static(&[0x69, 0x85]);
     let unknown_result = SelectResult::from_bytes(&unknown_response);
 
-    // The result is Ok(SelectResult), but the inner result is Err(SelectError::Unknown)
-    match unknown_result {
-        Ok(result) => {
-            if let Err(SelectError::Unknown { sw1, sw2 }) = &*result {
-                println!("Handled unknown status word: {:02X}{:02X}", sw1, sw2);
-            }
+    // The error is now inside the result, not wrapping it
+    match unknown_result.unwrap().into_inner() {
+        Ok(_) => println!("Unexpected success"),
+        Err(SelectError::Unknown { sw1, sw2 }) => {
+            println!("Handled unknown status word: {:02X}{:02X}", sw1, sw2);
         }
-        Err(err) => println!("Error parsing response: {}", err),
+        Err(err) => println!("Other error: {}", err),
     }
 }

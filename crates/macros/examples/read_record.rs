@@ -2,7 +2,7 @@
 //! Example of using the apdu_pair macro with the new Result-based API for Read Record command
 
 use bytes::Bytes;
-use nexum_apdu_core::ApduCommand;
+use nexum_apdu_core::{ApduCommand, ApduResponse};
 use nexum_apdu_macros::apdu_pair;
 
 apdu_pair! {
@@ -107,7 +107,7 @@ fn main() {
     ];
     let response_bytes = Bytes::from([&record_data[..], &[0x90, 0x00]].concat());
 
-    let result = ReadRecordResult::from_bytes(&response_bytes).expect("Failed to parse response");
+    let result = ReadRecordResult::from_bytes(&response_bytes).unwrap();
 
     // Using our custom methods on the unwrapped result
     match result.into_inner() {
@@ -134,7 +134,7 @@ fn main() {
             // In a real application, this would use an executor
             // For this example, we'll simulate responses
 
-            let response = if record_number <= 3 {
+            let result = if record_number <= 3 {
                 // Simulate a success response for first 3 records
                 let record_data = [
                     0x70,
@@ -162,17 +162,16 @@ fn main() {
                 ];
                 let response_bytes = Bytes::from([&record_data[..], &[0x90, 0x00]].concat());
 
-                ReadRecordResult::from_bytes(&response_bytes)?
+                ReadRecordResult::from_bytes(&response_bytes)
             } else {
                 // Simulate end of records for record 4+
                 let response_bytes = Bytes::from_static(&[0x6A, 0x83]);
-                ReadRecordResult::from_bytes(&response_bytes)?
-            };
+                ReadRecordResult::from_bytes(&response_bytes)
+            }
+            .unwrap();
 
-            // Get the inner result
-            let inner_result = response.into_inner();
-
-            match inner_result {
+            // Use the ? operator directly on the result
+            match result.into_inner() {
                 Ok(ok) => {
                     records.push(ok.record_data().to_vec());
                     record_number += 1;
