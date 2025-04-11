@@ -279,7 +279,7 @@ pub struct CommandResult(pub Result<Response, ResponseError>);
 
 impl CommandResult {
     /// Create a new result from a response
-    pub fn new(response: Response) -> Self {
+    pub const fn new(response: Response) -> Self {
         Self(Ok(response))
     }
 
@@ -299,7 +299,7 @@ impl TryFrom<Bytes> for CommandResult {
         // Parse the response bytes
         let response = Response::from_bytes(&bytes)?;
         // Return the parsed response wrapped in our newtype
-        Ok(CommandResult(Ok(response)))
+        Ok(Self(Ok(response)))
     }
 }
 

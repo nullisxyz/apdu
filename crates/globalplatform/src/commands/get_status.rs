@@ -90,10 +90,9 @@ apdu_pair! {
 impl GetStatusOk {
     /// Get the TLV data
     pub const fn tlv_data(&self) -> &Vec<u8> {
-        let data = match self {
+        match self {
             Self::Success { tlv_data } | Self::MoreData { tlv_data, .. } => tlv_data,
-        };
-        data
+        }
     }
 
     /// Check if more data is available

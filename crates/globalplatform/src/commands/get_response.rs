@@ -54,10 +54,9 @@ apdu_pair! {
 impl GetResponseOk {
     /// Get the response data
     pub const fn data(&self) -> &Vec<u8> {
-        let data = match self {
+        match self {
             Self::Success { data } | Self::MoreData { data, .. } => data,
-        };
-        data
+        }
     }
 
     /// Check if more data is available

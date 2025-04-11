@@ -785,12 +785,10 @@ pub(crate) fn expand_response(
             } else {
                 quote! { Err(#error_enum_name::#name { #(#field_inits,)* }) }
             }
+        } else if v.fields.is_empty() {
+            quote! { Ok(#ok_enum_name::#name) }
         } else {
-            if v.fields.is_empty() {
-                quote! { Ok(#ok_enum_name::#name) }
-            } else {
-                quote! { Ok(#ok_enum_name::#name { #(#field_inits,)* }) }
-            }
+            quote! { Ok(#ok_enum_name::#name { #(#field_inits,)* }) }
         };
 
         quote! {
