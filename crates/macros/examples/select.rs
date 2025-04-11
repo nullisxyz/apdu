@@ -49,31 +49,30 @@ apdu_pair! {
                 #[sw(0x6A, 0x86)]
                 #[error("Incorrect parameters P1-P2")]
                 IncorrectParameters,
-
-                // Unknown error
-                #[sw(_, _)]
-                #[error("Unknown error: {sw1:02X}{sw2:02X}")]
-                OtherError {
-                    sw1: u8,
-                    sw2: u8,
-                }
-            }
-
-            methods {
-                /// Returns true if selection was successful
-                pub fn is_selected(&self) -> bool {
-                    matches!(self, Self::Selected { .. })
-                }
-
-                /// Get the File Control Information if available
-                pub fn fci(&self) -> Option<&Vec<u8>> {
-                    match self {
-                        Self::Selected { fci } => Some(fci),
-                        _ => None,
-                    }
-                }
             }
         }
+    }
+}
+
+// Implement methods directly on the generated types
+impl SelectOk {
+    /// Returns true if selection was successful
+    pub fn is_selected(&self) -> bool {
+        matches!(self, Self::Selected { .. })
+    }
+
+    /// Get the File Control Information if available
+    pub fn fci(&self) -> Option<&Vec<u8>> {
+        match self {
+            Self::Selected { fci } => Some(fci),
+        }
+    }
+}
+
+impl SelectError {
+    /// Returns true if the file was not found
+    pub fn is_not_found(&self) -> bool {
+        matches!(self, Self::NotFound)
     }
 }
 
@@ -97,33 +96,44 @@ fn main() {
     ];
     let response_bytes = Bytes::from([&fci_data[..], &[0x90, 0x00]].concat());
 
-    let response = SelectResponse::from_bytes(&response_bytes).expect("Failed to parse response");
+    // Parse raw bytes to SelectResult - now with improved error handling
+    let result = SelectResult::from_bytes(&response_bytes).expect("Failed to parse response");
 
-    // Old way
-    if response.is_selected() {
-        println!("Application selected successfully!");
-        if let Some(fci) = response.fci() {
-            println!("FCI: {:02X?}", fci);
-        }
-    }
+    // We can also directly use TryFrom
+    let result2 =
+        SelectResult::try_from(response_bytes.clone()).expect("Failed to convert response");
 
-    // New Result-based way
-    match response.to_result() {
-        Ok(ok) => match ok {
-            SelectOk::Selected { fci } => {
-                println!("Application selected successfully (via Result)!");
-                println!("FCI data: {:02X?}", fci);
+    // Use our custom method on SelectOk when unwrapping
+    match result.into_inner() {
+        Ok(ok) => {
+            if ok.is_selected() {
+                // Using our custom method
+                println!("Application selected successfully!");
+                if let Some(fci) = ok.fci() {
+                    // Using our custom method
+                    println!("FCI data: {:02X?}", fci);
+                }
             }
-        },
+        }
         Err(err) => {
             println!("Selection failed: {}", err);
+
+            // Using our custom method on SelectError
+            if err.is_not_found() {
+                println!("File not found error detected!");
+            }
         }
     }
 
-    // Example function that uses the Result type alias
-    fn select_application(_aid: &[u8]) -> SelectResult {
+    // Using our custom method on SelectResult directly
+    if result2.is_ok() {
+        println!("Selection successful via custom helper method");
+    }
+
+    // Example function showing idiomatic error handling with ? operator
+    fn select_application(_aid: &[u8]) -> Result<Vec<u8>, SelectError> {
         // In a real application, this would use an executor
-        // For example: executor.execute(&SelectCommand::by_name(aid))?.into()
+        // For example: executor.execute(&SelectCommand::by_name(aid))?
 
         // Here we'll just simulate a response
         let fci_data = [
@@ -132,26 +142,41 @@ fn main() {
         ];
         let response_bytes = Bytes::from([&fci_data[..], &[0x90, 0x00]].concat());
 
-        let response =
-            SelectResponse::from_bytes(&response_bytes).map_err(|_| SelectError::OtherError {
-                sw1: 0x6F,
-                sw2: 0x00,
-            })?;
+        // Parse to our wrapper and then immediately unwrap to the inner Result
+        // This lets us use ? on the Result<SelectOk, SelectError>
+        let result = SelectResult::from_bytes(&response_bytes)?.into_inner();
 
-        // Convert to Result - this allows us to use ? for error propagation
-        response.into()
+        // Now we can use ? directly
+        let ok = result?;
+
+        // Process the successful variant
+        match ok {
+            SelectOk::Selected { fci } => Ok(fci),
+        }
     }
 
     // Usage of our helper function
     match select_application(&aid) {
-        Ok(ok) => match ok {
-            SelectOk::Selected { fci } => {
-                println!("Application selected via helper function!");
-                println!("FCI length: {} bytes", fci.len());
-            }
-        },
+        Ok(fci) => {
+            println!("Application selected via helper function!");
+            println!("FCI length: {} bytes", fci.len());
+        }
         Err(err) => {
             println!("Selection via helper function failed: {}", err);
         }
+    }
+
+    // Demonstrate handling unknown status words
+    let unknown_response = Bytes::from_static(&[0x69, 0x85, 0x90, 0x00]);
+    let unknown_result = SelectResult::from_bytes(&unknown_response);
+
+    // The result is Ok(SelectResult), but the inner result is Err(SelectError::Unknown)
+    match unknown_result {
+        Ok(result) => {
+            if let Err(SelectError::Unknown { sw1, sw2 }) = &*result {
+                println!("Handled unknown status word: {:02X}{:02X}", sw1, sw2);
+            }
+        }
+        Err(err) => println!("Error parsing response: {}", err),
     }
 }

@@ -27,7 +27,7 @@ impl StatusError {
 }
 
 /// Error for APDU response processing
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone)]
 pub enum ResponseError {
     /// Underlying transport has caused an error
     #[error(transparent)]
