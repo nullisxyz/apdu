@@ -830,13 +830,13 @@ pub(crate) fn expand_response(
     // Generate the code
     let tokens = quote! {
         /// Successful response variants
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, PartialEq, Eq)]
         #vis enum #ok_enum_name {
             #(#ok_variants,)*
         }
 
         /// Error response variants
-        #[derive(Debug, Clone, thiserror::Error)]
+        #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
         #vis enum #error_enum_name {
             #(#error_variants,)*
 
