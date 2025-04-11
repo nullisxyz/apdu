@@ -472,6 +472,7 @@ name = "nexum-apdu-macros"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "derive_more",
  "heck",
  "iso7816-tlv",
  "nexum-apdu-core",

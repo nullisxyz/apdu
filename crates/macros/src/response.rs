@@ -869,7 +869,7 @@ pub(crate) fn expand_response(
         }
 
         /// Result type for command responses - wraps a Result for better usability
-        #[derive(Debug, Clone)]
+        #[derive(Debug, Clone, derive_more::Deref, derive_more::DerefMut)]
         #vis struct #result_name(Result<#ok_enum_name, #error_enum_name>);
 
         impl #result_name {
@@ -878,12 +878,23 @@ pub(crate) fn expand_response(
                 Self(result)
             }
 
-            /// Parse response from raw bytes
-            pub fn from_bytes(bytes: &[u8]) -> Result<Self, #error_enum_name> {
+            /// Parse response from raw bytes (any type that can be referenced as bytes)
+            pub fn from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, #error_enum_name> {
+                let bytes_ref = bytes.as_ref();
+                let bytes = bytes::Bytes::copy_from_slice(bytes_ref);
+
                 // Use existing Response::from_bytes to parse the bytes
-                let response = nexum_apdu_core::Response::from_bytes(&bytes::Bytes::copy_from_slice(bytes))
-                    .map_err(#error_enum_name::ResponseError)?;
-                Self::from_response(&response)
+                Self::from_response(&nexum_apdu_core::Response::from_bytes(&bytes)?)
+            }
+
+            /// Unwrap the result to get the inner value
+            pub fn unwrap(self) -> Result<#ok_enum_name, #error_enum_name> {
+                self.0
+            }
+
+            /// Get the inner result by value
+            pub fn into_inner(self) -> Result<#ok_enum_name, #error_enum_name> {
+                self.0
             }
 
             // Use the appropriate from_response implementation
@@ -891,11 +902,6 @@ pub(crate) fn expand_response(
 
             // Only include the custom parser method if it was defined
             #with_custom_parser_method
-
-            /// Unwrap the result into its inner value
-            pub fn into_inner(self) -> Result<#ok_enum_name, #error_enum_name> {
-                self.0
-            }
 
             /// Get a reference to the inner result
             pub fn as_inner(&self) -> &Result<#ok_enum_name, #error_enum_name> {
@@ -942,22 +948,6 @@ pub(crate) fn expand_response(
                 let response = nexum_apdu_core::Response::from_bytes(&bytes)
                     .map_err(#error_enum_name::ResponseError)?;
                 Self::from_response(&response)
-            }
-        }
-
-        // Implement Deref to allow using Result methods directly
-        impl std::ops::Deref for #result_name {
-            type Target = Result<#ok_enum_name, #error_enum_name>;
-
-            fn deref(&self) -> &Self::Target {
-                &self.0
-            }
-        }
-
-        // Implement DerefMut for mutable access
-        impl std::ops::DerefMut for #result_name {
-            fn deref_mut(&mut self) -> &mut Self::Target {
-                &mut self.0
             }
         }
 

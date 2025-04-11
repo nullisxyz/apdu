@@ -170,6 +170,8 @@ fn expand_apdu_pair(pair: &ApduPair) -> Result<TokenStream2, TokenStream2> {
             use super::*;
             use nexum_apdu_core::command::ExpectedLength;
             use nexum_apdu_core::processor::secure::SecurityLevel;
+            use std::convert::TryFrom;
+            use std::ops::{Deref, DerefMut};
 
             #command_tokens
 

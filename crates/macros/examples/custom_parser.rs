@@ -207,20 +207,15 @@ fn main() {
 
     // Function that uses our new API with question mark operator
     fn authenticate_user(pin: &[u8]) -> Result<(), ApduError> {
-        // In a real application, this would use an actual card executor
-        // For this example, we'll simulate responses
-
         // First check if PIN is blocked by querying remaining attempts
-        let query_response = VerifyPinResult::from_bytes(&[0x63, 0xC2])
-            .map_err(|e| ResponseError::Message(e.to_string()))?; // Simulate 2 attempts left
+        let query_result = VerifyPinResult::from_bytes(&[0x63, 0xC2])
+            .map_err(|e| ApduError::Response(ResponseError::Message(e.to_string())))?;
 
-        // Get the inner Result and use ?
-        let query_result = query_response.into_inner();
-
-        match query_result {
+        // Get the query result - now more ergonomic with deref
+        match &*query_result {
             Ok(VerifyPinOk::AttemptsRemaining { count }) => {
                 println!("PIN attempts remaining: {}", count);
-                if count == 0 {
+                if *count == 0 {
                     return Err(ApduError::Other("PIN is blocked"));
                 }
             }
@@ -229,17 +224,16 @@ fn main() {
             }
         }
 
-        // Now try to verify the PIN
-        let verify_response = VerifyPinResult::from_bytes(if pin == [0x31, 0x32, 0x33, 0x34] {
+        // Now try to verify the PIN - more ergonomic from_bytes accepting any AsRef<[u8]>
+        let verify_result = VerifyPinResult::from_bytes(if pin == [0x31, 0x32, 0x33, 0x34] {
             &[0x90, 0x00] // Success
         } else {
             &[0x63, 0xC1] // 1 attempt left
         })
         .map_err(|e| ApduError::Response(ResponseError::Message(e.to_string())))?;
 
-        // Check result
-        let verify_ok = verify_response
-            .into_inner()
+        // Check result - now we can use ? directly with deref
+        let verify_ok = verify_result
             .map_err(|e| ApduError::Response(ResponseError::Message(e.to_string())))?;
 
         // Process success
