@@ -16,15 +16,12 @@ pub type ExpectedLength = u8;
 
 use error::CommandError;
 
-use crate::prelude::SecurityLevel;
+use crate::{Response, prelude::SecurityLevel, response::error::ResponseError};
 
 /// Core trait for APDU commands
 pub trait ApduCommand {
-    /// Response enum type returned when this command is executed
+    /// Response result type returned when this command is executed
     type Response: TryFrom<Bytes>;
-
-    /// Result type for this command (like SelectResult = Result<SelectOk, SelectError>)
-    type ResultType;
 
     /// Command class (CLA)
     fn class(&self) -> u8;
@@ -275,9 +272,31 @@ impl Command {
     }
 }
 
+/// Response type wrapper for Command implementation
+#[derive(Debug, Clone)]
+pub struct CommandResult(pub Result<Response, ResponseError>);
+
+impl TryFrom<Bytes> for CommandResult {
+    type Error = ResponseError;
+
+    fn try_from(bytes: Bytes) -> Result<Self, Self::Error> {
+        // Parse the response bytes
+        let response = Response::from_bytes(&bytes)?;
+
+        // Return the parsed response wrapped in our newtype
+        Ok(CommandResult(Ok(response)))
+    }
+}
+
+impl From<CommandResult> for Result<Response, ResponseError> {
+    fn from(result: CommandResult) -> Self {
+        result.0
+    }
+}
+
+// Update the ApduCommand implementation
 impl ApduCommand for Command {
-    type Response = Bytes;
-    type ResultType = Result<Bytes, CommandError>;
+    type Response = CommandResult;
 
     fn class(&self) -> u8 {
         self.cla

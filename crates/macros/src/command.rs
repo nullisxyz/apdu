@@ -140,7 +140,6 @@ pub(crate) fn expand_command(
 
         impl nexum_apdu_core::ApduCommand for #command_name {
             type Response = #result_name;
-            type ResultType = #result_name;
 
             fn class(&self) -> u8 {
                 #cla
