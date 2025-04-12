@@ -105,7 +105,7 @@ fn main() {
     let result = GetDataCommand::parse_response_raw(response_bytes);
 
     // Convert to inner result and use our custom methods
-    match result.clone() {
+    match &result {
         Ok(ok) => {
             println!("Success! Data: {:?}", ok.data());
             if let Some(remaining) = ok.remaining_bytes() {
