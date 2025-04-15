@@ -110,28 +110,22 @@ pub trait SecureChannel: CardTransport + Sized {
     fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error>;
 }
 
-/// Blanket implementation of CardTransport for all SecureChannel types
-impl<T: SecureChannel> CardTransport for T {
-    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
-        // Secure channels should modify commands if established and then pass them through
-        // Each SecureChannel implementation may have different ways of protecting commands
-        if self.is_established() {
-            // For each SecureChannel, we expect the transmit_raw to delegate to the underlying
-            // transport after appropriate protection is applied
-            self.transport_mut().transmit_raw(command)
-        } else {
-            // When not established, just pass through to the underlying transport
-            self.transport_mut().transmit_raw(command)
-        }
+/// Trait for command protection in secure channels
+pub trait ProtectCommand {
+    /// Apply protection to a command according to security policy
+    fn protect_command(&mut self, command: &[u8]) -> Result<Vec<u8>, Error>;
+
+    /// Process a response according to security policy
+    fn process_response(&mut self, response: &[u8]) -> Result<Bytes, Error> {
+        // Default implementation just copies the bytes
+        Ok(Bytes::copy_from_slice(response))
     }
+}
 
-    fn reset(&mut self) -> Result<(), Error> {
-        // Close the secure channel if it's open
-        if self.is_established() {
-            self.close()?;
-        }
-
-        // Reset the underlying transport
-        self.transport_mut().reset()
+// SecureChannel automatically implements ProtectCommand
+impl<T: SecureChannel> ProtectCommand for T {
+    fn protect_command(&mut self, command: &[u8]) -> Result<Vec<u8>, Error> {
+        // By default, just passthrough
+        Ok(command.to_vec())
     }
 }

@@ -287,34 +287,44 @@ impl<T: CardTransport> SecureChannel for GPSecureChannel<T> {
     }
 }
 
-// Implementation of methods for GPSecureChannel
-impl<T: CardTransport> GPSecureChannel<T> {
-    /// Helper method to protect a command if the secure channel is established
-    pub fn protect_and_transmit(&mut self, command: &[u8]) -> Result<Bytes, Error> {
+// Override CardTransport for GPSecureChannel to properly protect commands
+impl<T: CardTransport> CardTransport for GPSecureChannel<T> {
+    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
         tracing::trace!(
-            "GPSecureChannel::protect_and_transmit called with security_level={:?}, established={}",
+            "GPSecureChannel::transmit_raw called with security_level={:?}, established={}",
             self.security_level,
             self.is_established()
         );
-
-        // If secure channel is established, protect the command
+        
         if self.is_established() {
-            tracing::trace!("GPSecureChannel: applying protection to command");
-            // Apply protection
+            tracing::debug!("GPSecureChannel: protecting command with SCP02");
+            // Apply SCP02 protection
             let protected = self.protect_command(command)?;
-
-            // Transmit protected command
+            
+            // Send the protected command
             let response = self.transport.transmit_raw(&protected)?;
-
-            // Process response
-            tracing::trace!("GPSecureChannel: processing protected response");
+            
+            // Process the response (for SCP02 this is a passthrough)
             self.process_response(&response)
         } else {
-            tracing::trace!("GPSecureChannel: passing through command to underlying transport");
-            // If not established, just pass through
+            // If channel not established, pass through to underlying transport
             self.transport.transmit_raw(command)
         }
     }
+    
+    fn reset(&mut self) -> Result<(), Error> {
+        // Close the channel if it's open
+        if self.is_established() {
+            self.close()?;
+        }
+        
+        // Reset the underlying transport
+        self.transport.reset()
+    }
+}
+
+// Implementation of methods for GPSecureChannel
+impl<T: CardTransport> GPSecureChannel<T> {
 
     /// Get the current security level - this overrides the blanket implementation
     /// from the SecureChannel trait to return the actual security level
