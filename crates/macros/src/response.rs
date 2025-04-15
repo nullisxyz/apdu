@@ -623,7 +623,7 @@ pub(crate) fn expand_response(
     let extra_error_variants = quote! {
         /// Error from response parsing
         #[error(transparent)]
-        ResponseError(#[from] nexum_apdu_core::response::error::ResponseError),
+        ResponseError(#[from] nexum_apdu_core::Error),
 
         /// Unknown status word
         #[error("Unknown status word: {sw1:02X}{sw2:02X}")]
@@ -723,7 +723,7 @@ pub(crate) fn expand_response(
                         #name: match data_payload {
                             Some(bytes) => bytes.to_vec(),
                             None => return Err(#error_enum_name::ResponseError(
-                                nexum_apdu_core::response::error::ResponseError::Message(
+                                nexum_apdu_core::Error::message(
                                     format!("Expected payload for variant {} with status {:02X}{:02X}", #variant_name_str, sw1, sw2)
                                 )
                             ))
@@ -740,13 +740,13 @@ pub(crate) fn expand_response(
                         #name: match data_payload {
                             Some(bytes) => std::str::from_utf8(bytes).map_err(|_|
                                 #error_enum_name::ResponseError(
-                                    nexum_apdu_core::response::error::ResponseError::Message(
+                                    nexum_apdu_core::Error::message(
                                         format!("Invalid UTF-8 in payload for variant {}", #variant_name_str)
                                     )
                                 )
                             )?.to_string(),
                             None => return Err(#error_enum_name::ResponseError(
-                                nexum_apdu_core::response::error::ResponseError::Message(
+                                nexum_apdu_core::Error::message(
                                     format!("Expected payload for variant {} with status {:02X}{:02X}", #variant_name_str, sw1, sw2)
                                 )
                             ))
@@ -758,7 +758,7 @@ pub(crate) fn expand_response(
                         #name: match data_payload {
                             Some(_) => Default::default(),
                             None => return Err(#error_enum_name::ResponseError(
-                                nexum_apdu_core::response::error::ResponseError::Message(
+                                nexum_apdu_core::Error::message(
                                     format!("Expected payload for variant {} with status {:02X}{:02X}", #variant_name_str, sw1, sw2)
                                 )
                             ))
@@ -794,14 +794,14 @@ pub(crate) fn expand_response(
         // For custom parser, we use the provided parser
         let custom_parser = response.custom_parser.as_ref().unwrap();
         quote! {
-            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, Self::Error> {
-                (#custom_parser)(&response)
+            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, nexum_apdu_core::Error> {
+                (#custom_parser)(&response).map_err(|e| e.into())
             }
         }
     } else {
         // Standard parser implementation
         quote! {
-            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, Self::Error> {
+            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, nexum_apdu_core::Error> {
                 let status = response.status();
                 let sw1 = status.sw1;
                 let sw2 = status.sw2;
@@ -810,7 +810,7 @@ pub(crate) fn expand_response(
                 match (sw1, sw2) {
                     #(#match_arms,)*
                     // For unmatched status words, use the Unknown variant
-                    _ => Err(Self::Error::Unknown { sw1, sw2 }),
+                    _ => Err(Self::Error::Unknown { sw1, sw2 }).map_err(|e| e.into()),
                 }
             }
         }

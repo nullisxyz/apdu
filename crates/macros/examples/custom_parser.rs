@@ -213,8 +213,8 @@ fn main() {
                 println!("PIN attempts remaining: {}", count);
                 if count == 0 {
                     return Err(VerifyPinError::ResponseError(
-                        nexum_apdu_core::response::error::ResponseError::Message(
-                            "PIN is blocked".to_string(),
+                        nexum_apdu_core::Error::message(
+                            "PIN is blocked".to_string()
                         ),
                     ));
                 }

@@ -3,8 +3,6 @@
 //! This module provides types and traits for working with APDU commands
 //! according to ISO/IEC 7816-4.
 
-pub mod error;
-
 use std::fmt;
 
 use bytes::{BufMut, Bytes, BytesMut};
@@ -16,9 +14,7 @@ pub type ExpectedLength = u16;
 /// Expected length type for APDU commands
 pub type ExpectedLength = u8;
 
-use error::CommandError;
-
-use crate::{Response, prelude::SecurityLevel, response::error::ResponseError};
+use crate::{Error, Response, prelude::SecurityLevel};
 
 /// Core trait for APDU commands
 pub trait ApduCommand {
@@ -149,13 +145,10 @@ pub trait ApduCommand {
     }
 
     /// Parse response into the command's response type
-    fn parse_response(response: Response) -> Result<Self::Success, Self::Error>;
+    fn parse_response(response: Response) -> Result<Self::Success, Error>;
 
     /// Parse raw bytes into the command's response type
-    fn parse_response_raw(bytes: Bytes) -> Result<Self::Success, Self::Error>
-    where
-        Self::Error: From<ResponseError>,
-    {
+    fn parse_response_raw(bytes: Bytes) -> Result<Self::Success, Error> {
         let response = Response::from_bytes(&bytes)?;
         Self::parse_response(response)
     }
@@ -247,9 +240,9 @@ impl Command {
     }
 
     /// Parse a command from raw bytes
-    pub fn from_bytes(data: &[u8]) -> Result<Self, CommandError> {
+    pub fn from_bytes(data: &[u8]) -> Result<Self, Error> {
         if data.len() < 4 {
-            return Err(CommandError::InvalidLength(data.len()));
+            return Err(Error::InvalidCommandLength(data.len()));
         }
 
         let cla = data[0];
@@ -277,11 +270,11 @@ impl Command {
                     if data.len() == 5 + lc + 1 {
                         command.le = Some(data[5 + lc] as ExpectedLength);
                     } else {
-                        return Err(CommandError::InvalidLength(data.len()));
+                        return Err(Error::InvalidCommandLength(data.len()));
                     }
                 }
             } else {
-                return Err(CommandError::InvalidLength(data.len()));
+                return Err(Error::InvalidCommandLength(data.len()));
             }
         }
 
@@ -292,7 +285,7 @@ impl Command {
 // Update the ApduCommand implementation
 impl ApduCommand for Command {
     type Success = Response;
-    type Error = ResponseError;
+    type Error = Error;
 
     fn class(&self) -> u8 {
         self.cla

@@ -23,21 +23,18 @@ pub use error::{Error, Result};
 pub use load::CapFileInfo;
 use nexum_apdu_core::prelude::*;
 use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager, PcscTransport};
-pub use secure_channel::GPSecureChannel;
+pub use secure_channel::{GPSecureChannel, create_secure_channel};
 pub use session::{Keys, Session};
 
 // Re-export from nexum_apdu_core for convenience
-pub use nexum_apdu_core::{ResponseAwareExecutor, SecureChannelExecutor};
+pub use nexum_apdu_core::ResponseAwareExecutor;
 
 // Export main commands
 pub use commands::*;
 
-pub trait GlobalPlatformExecutor: Executor + ResponseAwareExecutor + SecureChannelExecutor {}
+pub trait GlobalPlatformExecutor: Executor + ResponseAwareExecutor {}
 
-impl<T> GlobalPlatformExecutor for T where
-    T: Executor + ResponseAwareExecutor + SecureChannelExecutor
-{
-}
+impl<T> GlobalPlatformExecutor for T where T: Executor + ResponseAwareExecutor {}
 
 pub type DefaultGlobalPlatform = GlobalPlatform<CardExecutor<PcscTransport, Error>>;
 
@@ -55,8 +52,8 @@ impl DefaultGlobalPlatform {
 
 /// Convenience functions for common operations
 pub mod operations {
+    use nexum_apdu_core::ResponseAwareExecutor;
     use nexum_apdu_core::prelude::Executor;
-    use nexum_apdu_core::{ApduExecutorErrors, ResponseAwareExecutor, SecureChannelExecutor};
 
     use crate::commands::get_status::{parse_applications, parse_load_files};
     use crate::{Error, GlobalPlatform, Result};
@@ -64,7 +61,7 @@ pub mod operations {
     /// Connect to a card, select the card manager, and establish a secure channel
     pub fn connect_and_setup<E>(executor: E) -> Result<GlobalPlatform<E>>
     where
-        E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        E: Executor + ResponseAwareExecutor,
         Error: From<<E as ApduExecutorErrors>::Error>,
     {
         // Create GlobalPlatform instance
@@ -84,7 +81,7 @@ pub mod operations {
         gp: &mut GlobalPlatform<E>,
     ) -> Result<Vec<crate::commands::get_status::ApplicationInfo>>
     where
-        E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        E: Executor + ResponseAwareExecutor,
         Error: From<<E as ApduExecutorErrors>::Error>,
     {
         let response = gp.get_applications_status()?;
@@ -96,7 +93,7 @@ pub mod operations {
         gp: &mut GlobalPlatform<E>,
     ) -> Result<Vec<crate::commands::get_status::LoadFileInfo>>
     where
-        E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        E: Executor + ResponseAwareExecutor,
         Error: From<<E as ApduExecutorErrors>::Error>,
     {
         let response = gp.get_load_files_status()?;
@@ -106,7 +103,7 @@ pub mod operations {
     /// Delete a package and all of its applications
     pub fn delete_package<E>(gp: &mut GlobalPlatform<E>, aid: &[u8]) -> Result<()>
     where
-        E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        E: Executor + ResponseAwareExecutor,
         Error: From<<E as ApduExecutorErrors>::Error>,
     {
         // Delete the package and all related applications
@@ -122,7 +119,7 @@ pub mod operations {
         install_params: &[u8],
     ) -> Result<()>
     where
-        E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+        E: Executor + ResponseAwareExecutor,
         Error: From<<E as ApduExecutorErrors>::Error>,
     {
         // First analyze the CAP file to extract package and applet AIDs

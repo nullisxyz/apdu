@@ -2,7 +2,6 @@
 //!
 //! This command is used to start a secure channel session.
 
-use nexum_apdu_core::response::error::ResponseError;
 use nexum_apdu_macros::apdu_pair;
 
 use crate::constants::*;
@@ -84,7 +83,7 @@ apdu_pair! {
                                 })
                             }
                         }
-                        Err(ResponseError::Parse("Response data incorrect length").into())
+                        Err(nexum_apdu_core::Error::parse("Response data incorrect length").into())
                     }
                     SW_SECURITY_STATUS_NOT_SATISFIED => Err(InitializeUpdateError::SecurityStatusNotSatisfied),
                     _ => Err(InitializeUpdateError::Unknown {

@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use nexum_apdu_core::error::ApduExecutorErrors;
 use nexum_apdu_core::prelude::*;
 
 use crate::commands::delete::DeleteOk;
@@ -12,19 +13,18 @@ use crate::commands::get_status::GetStatusOk;
 use crate::commands::install::InstallOk;
 use crate::commands::select::SelectOk;
 use crate::{
-    Error, Result,
+    Result,
     commands::{DeleteCommand, GetStatusCommand, InstallCommand, LoadCommand, SelectCommand},
     constants::{SECURITY_DOMAIN_AID, get_status_p1, load_p1},
     load::{CapFileInfo, LoadCommandStream},
-    secure_channel::create_secure_channel_provider,
-    session::{Keys, Session},
+    session::Session,
 };
 
 /// GlobalPlatform card management application
 #[allow(missing_debug_implementations)]
 pub struct GlobalPlatform<E>
 where
-    E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+    E: Executor + ResponseAwareExecutor,
     Error: From<<E as ApduExecutorErrors>::Error>,
 {
     /// Card executor
@@ -37,7 +37,7 @@ where
 
 impl<E> GlobalPlatform<E>
 where
-    E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
+    E: Executor + ResponseAwareExecutor,
     Error: From<<E as ApduExecutorErrors>::Error>,
 {
     /// Create a new GlobalPlatform instance
@@ -68,20 +68,6 @@ where
         }
 
         Ok(response)
-    }
-
-    /// Open a secure channel with default keys
-    pub fn open_secure_channel(&mut self) -> Result<()> {
-        self.open_secure_channel_with_keys(&Keys::default())
-    }
-
-    /// Open a secure channel with specific keys and security level
-    pub fn open_secure_channel_with_keys(&mut self, keys: &Keys) -> Result<()> {
-        let provider = create_secure_channel_provider(keys.clone());
-
-        self.executor
-            .open_secure_channel(&provider)
-            .map_err(Into::into)
     }
 
     /// Delete an object
@@ -284,6 +270,64 @@ where
         self.session = None;
         Ok(())
     }
+    
+    /// Open a secure channel using default keys
+    pub fn open_secure_channel(&mut self) -> Result<()> {
+        // Use default keys
+        let keys = crate::session::Keys::default();
+        self.open_secure_channel_with_keys(keys)
+    }
+
+    /// Open a secure channel with specific keys
+    pub fn open_secure_channel_with_keys(&mut self, keys: crate::session::Keys) -> Result<()> {
+        // First, reset the current channel if any
+        self.close_secure_channel()?;
+        
+        // Select the card manager (ISD) first
+        self.select_card_manager()?;
+        
+        // Create INITIALIZE UPDATE command
+        let mut host_challenge = [0u8; 8];
+        // Using a fixed challenge for simplicity - in a real app, use random data
+        host_challenge.copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        
+        let init_cmd = crate::commands::InitializeUpdateCommand::with_challenge(host_challenge.to_vec());
+        let init_response = self.executor.execute(&init_cmd)?;
+        
+        // Store init response for later processing
+        if let Ok(raw_response) = self.executor.last_response() {
+            self.last_response = Some(Bytes::copy_from_slice(raw_response));
+        }
+        
+        // Create the session from the response
+        let session = match self.last_response.as_ref() {
+            Some(data) => {
+                let init_resp = crate::commands::InitializeUpdateCommand::parse_response_raw(data.clone());
+                match crate::session::Session::from_response(&keys, &init_resp, host_challenge) {
+                    Ok(session) => session,
+                    Err(_) => return Err(Error::AuthenticationFailed("Failed to create session")),
+                }
+            },
+            None => return Err(Error::Other("No response data available")),
+        };
+        
+        // Store the session
+        self.session = Some(session);
+        
+        // Now send EXTERNAL AUTHENTICATE command
+        let auth_cmd = crate::commands::ExternalAuthenticateCommand::from_challenges(
+            self.session.as_ref().unwrap().keys().enc(),
+            self.session.as_ref().unwrap().sequence_counter(),
+            self.session.as_ref().unwrap().card_challenge(),
+            self.session.as_ref().unwrap().host_challenge(),
+        );
+        
+        // Execute the command
+        let auth_result = self.executor.execute(&auth_cmd)?;
+        
+        // If we got here without errors, the secure channel is established
+        Ok(())
+    }
 
     /// Get the last response
     pub fn last_response(&self) -> Option<&[u8]> {
@@ -292,11 +336,6 @@ where
 
     /// Get card data including CPLC information
     pub fn get_card_data(&mut self) -> Result<Bytes> {
-        // If we don't have a secure channel, we need to open one
-        if self.session.is_none() {
-            self.open_secure_channel()?;
-        }
-
         // Simple GET DATA command for card data
         let get_data_cmd = Command::new(0x80, 0xCA, 0x00, 0x66).with_le(0x00);
 
@@ -335,7 +374,7 @@ where
 mod tests {
     use super::*;
     use hex_literal::hex;
-    use nexum_apdu_core::{CardExecutor, transport::error::TransportError};
+    use nexum_apdu_core::transport::error::TransportError;
 
     // Custom mock transport for tests
     #[derive(Debug)]

@@ -16,10 +16,6 @@ workspace = true
 ## bytes
 bytes.workspace = true
 
-## derivations
-derive_more = { workspace = true, features = ["display", "deref", "deref_mut"] }
-dyn-clone.workspace = true
-
 ## misc
 hex.workspace = true
 thiserror = { workspace = true, optional = true }
