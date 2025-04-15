@@ -19,17 +19,17 @@ pub mod util;
 
 // Re-exports
 pub use application::GlobalPlatform;
-pub use error::{Error, Result, ResultExt, CoreResultExt};
+pub use error::{CoreResultExt, Error, Result, ResultExt};
 pub use load::CapFileInfo;
 use nexum_apdu_core::prelude::*;
 use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager, PcscTransport};
-pub use secure_channel::{GPSecureChannel, GPSecureChannelExecutor, GPSecureChannelTransport, create_secure_channel};
+pub use secure_channel::GPSecureChannel;
 pub use session::{Keys, Session};
 
 // Re-export from nexum_apdu_core for convenience
 pub use nexum_apdu_core::ResponseAwareExecutor;
-pub use nexum_apdu_core::secure_channel::SecurityLevel;
 pub use nexum_apdu_core::executor::SecureChannelExecutor;
+pub use nexum_apdu_core::secure_channel::SecurityLevel;
 
 // Export main commands
 pub use commands::*;
@@ -37,10 +37,13 @@ pub use commands::*;
 /// Trait for executors that can be used with GlobalPlatform operations
 pub trait GlobalPlatformExecutor: Executor + ResponseAwareExecutor + SecureChannelExecutor {}
 
-impl<T> GlobalPlatformExecutor for T where T: Executor + ResponseAwareExecutor + SecureChannelExecutor {}
+impl<T> GlobalPlatformExecutor for T where
+    T: Executor + ResponseAwareExecutor + SecureChannelExecutor
+{
+}
 
-/// Default GlobalPlatform implementation using PCSC transport
-pub type DefaultGlobalPlatform = GlobalPlatform<CardExecutor<PcscTransport>>;
+/// Default GlobalPlatform implementation using PCSC transport with secure channel
+pub type DefaultGlobalPlatform = GlobalPlatform<CardExecutor<GPSecureChannel<PcscTransport>>>;
 
 impl DefaultGlobalPlatform {
     /// Connect to a card reader with the given name
@@ -51,7 +54,13 @@ impl DefaultGlobalPlatform {
         let transport = manager
             .open_reader_with_config(reader_name, config)
             .map_err(|e| Error::message(format!("Failed to open reader: {}", e)))?;
-        let executor = CardExecutor::new(transport);
+        
+        // Create secure channel with default keys
+        let secure_channel = GPSecureChannel::new(transport, Keys::default());
+        
+        // Create executor with secure channel
+        let executor = CardExecutor::new(secure_channel);
+        
         Ok(Self::new(executor))
     }
 }
@@ -92,7 +101,8 @@ pub mod operations {
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
     {
-        let response = gp.get_applications_status()
+        let response = gp
+            .get_applications_status()
             .context("Failed to get applications status")?;
         Ok(parse_applications(response))
     }
@@ -104,7 +114,8 @@ pub mod operations {
     where
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
     {
-        let response = gp.get_load_files_status()
+        let response = gp
+            .get_load_files_status()
             .context("Failed to get load files status")?;
         Ok(parse_load_files(response))
     }
@@ -115,7 +126,8 @@ pub mod operations {
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
     {
         // Delete the package and all related applications
-        let _ = gp.delete_object_and_related(aid)
+        let _ = gp
+            .delete_object_and_related(aid)
             .context("Failed to delete package")?;
         Ok(())
     }
@@ -131,7 +143,8 @@ pub mod operations {
         E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
     {
         // First analyze the CAP file to extract package and applet AIDs
-        let cap_info = gp.analyze_cap_file(&cap_path)
+        let cap_info = gp
+            .analyze_cap_file(&cap_path)
             .context("Failed to analyze CAP file")?;
 
         let package_aid = cap_info

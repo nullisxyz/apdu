@@ -84,13 +84,13 @@ where
     /// Get the status of applications
     pub fn get_applications_status(&mut self) -> Result<GetStatusOk> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::APPLICATIONS);
-        self.executor.execute(&cmd).map_err(Error::from)
+        self.executor.execute_secure(&cmd).map_err(Error::from)
     }
 
     /// Get the status of load files
     pub fn get_load_files_status(&mut self) -> Result<GetStatusOk> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::EXEC_LOAD_FILES);
-        self.executor.execute(&cmd).map_err(Error::from)
+        self.executor.execute_secure(&cmd).map_err(Error::from)
     }
 
     /// Install a package for load
@@ -271,12 +271,12 @@ where
 
     /// Open a secure channel using default keys
     pub fn open_secure_channel(&mut self) -> Result<()> {
-        // First, reset any existing channel
-        self.close_secure_channel()?;
-        
+        // // First, reset any existing channel
+        // self.close_secure_channel()?;
+
         // Select the card manager (ISD) first
         self.select_card_manager()?;
-        
+
         // Open the secure channel through the executor
         self.executor.open_secure_channel().map_err(Error::from)
     }
@@ -285,7 +285,7 @@ where
     pub fn is_secure_channel_open(&self) -> bool {
         self.executor.has_secure_channel()
     }
-    
+
     /// Get the current security level of the secure channel
     pub fn security_level(&self) -> SecurityLevel {
         self.executor.security_level()
@@ -358,7 +358,10 @@ mod tests {
     }
 
     impl nexum_apdu_core::transport::CardTransport for TestTransport {
-        fn transmit_raw(&mut self, _command: &[u8]) -> std::result::Result<Bytes, nexum_apdu_core::Error> {
+        fn transmit_raw(
+            &mut self,
+            _command: &[u8],
+        ) -> std::result::Result<Bytes, nexum_apdu_core::Error> {
             if self.responses.is_empty() {
                 return Err(nexum_apdu_core::Error::other("No response available"));
             }
@@ -388,8 +391,11 @@ mod tests {
         let mut transport = TestTransport::new();
         transport.add_response(mock_select_response());
 
-        // Create executor with the transport
-        let executor = CardExecutor::new(transport);
+        // Create secure channel with the mock transport
+        let secure_channel = crate::GPSecureChannel::new(transport, crate::Keys::default());
+
+        // Create executor with the secure channel
+        let executor = CardExecutor::new(secure_channel);
 
         // Create GlobalPlatform instance
         let mut gp = GlobalPlatform::new(executor);

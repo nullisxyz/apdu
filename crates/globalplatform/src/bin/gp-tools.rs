@@ -6,7 +6,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use hex::FromHex;
 use nexum_apdu_core::prelude::CardExecutor;
-use nexum_apdu_globalplatform::{GlobalPlatform, load::LoadCommandStream, operations};
+use nexum_apdu_globalplatform::{GlobalPlatform, load::LoadCommandStream, operations, Keys, GPSecureChannel};
 use nexum_apdu_transport_pcsc::{PcscConfig, PcscDeviceManager};
 use std::io::{self, Write};
 use std::path::PathBuf;
@@ -165,7 +165,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to the card
     let transport = manager.open_reader_with_config(reader.name(), config)?;
-    let executor = CardExecutor::new(transport);
+    
+    // Create GPSecureChannel with PcscTransport
+    println!("Creating secure channel...");
+    
+    // Create default keys or use custom keys from CLI
+    let keys = if let Some(key_str) = cli.keys {
+        println!("Using custom keys: {}", key_str);
+        
+        // Parse custom key from hex string
+        match hex::decode(&key_str) {
+            Ok(key_bytes) => {
+                if key_bytes.len() != 16 {
+                    eprintln!("Invalid key length: must be 16 bytes (32 hex digits)");
+                    return Ok(());
+                }
+                
+                // Create key from bytes
+                let key = cipher::Key::<nexum_apdu_globalplatform::crypto::Scp02>::from_slice(&key_bytes);
+                
+                // Create Keys from single key
+                Keys::from_single_key(*key)
+            }
+            Err(e) => {
+                eprintln!("Failed to parse key as hex: {}", e);
+                return Ok(());
+            }
+        }
+    } else {
+        println!("Using default test keys");
+        Keys::default()
+    };
+    
+    // Create the secure channel with the transport and keys
+    let secure_channel = GPSecureChannel::new(transport, keys);
+    
+    // Create executor with the secure channel
+    let executor = CardExecutor::new(secure_channel);
 
     // Create GlobalPlatform instance
     let mut gp = GlobalPlatform::new(executor);
@@ -175,20 +211,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = gp.select_card_manager()?;
     println!("Card Manager selected successfully.");
 
-    // Open secure channel with appropriate keys
+    // Open secure channel
     println!("Opening secure channel...");
-    if cli.default_keys {
-        println!("Using default test keys");
-    } else if let Some(key_str) = cli.keys {
-        println!("Using custom keys: {}", key_str);
-        // Note: we're currently not using custom keys with the executor's
-        // built-in secure channel implementation
-    } else {
-        println!("Using default test keys");
-    };
-
-    // Since we removed the executor-specific implementation, we need to set up the
-    // secure channel directly in the executor first
     match gp.open_secure_channel() {
         Ok(_) => println!("Secure channel established."),
         Err(e) => {

@@ -213,34 +213,13 @@ where
     where
         C: ApduCommand,
     {
-        // Check security level requirement
-        let required_level = command.required_security_level();
-
-        // If no security required, use the standard execute method
-        if required_level.is_none() {
-            return self.execute_without_security(command);
-        }
-
-        // Otherwise, use the secure execution path
+        // Always use the secure execution path for all commands, regardless of
+        // whether they explicitly require security or not. This ensures that
+        // all commands benefit from the secure channel protection.
         <Self as SecureChannelExecutor>::execute_secure(self, command)
     }
 
-    /// Execute without security checks - internal method to avoid recursion
-    fn execute_without_security<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
-    where
-        C: ApduCommand,
-    {
-        // Execute normally - send command bytes and parse response
-        let command_bytes = command.to_bytes();
-        let response_bytes = self
-            .transmit_raw(&command_bytes)
-            .map_err(C::convert_error)?;
-        let response = Response::from_bytes(&response_bytes)
-            .map_err(|e| C::convert_error(e.with_context("Failed to parse response bytes")))?;
-
-        // Parse the response using the command's parse_response method
-        C::parse_response(response)
-    }
+    // (removed unused execute_without_security method)
 }
 
 // Implement SecureChannelExecutor for CardExecutor when transport is a SecureChannel

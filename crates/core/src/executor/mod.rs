@@ -109,9 +109,15 @@ pub trait SecureChannelExecutor: Executor {
         // Check security level requirement
         let required_level = command.required_security_level();
 
-        // If no security required, just execute normally
+        // If no security required, execute the command as-is without additional security
+        // but still use the execute_direct method to avoid recursion
         if required_level.is_none() {
-            return self.execute(command);
+            // Use a low-level approach to execute the command directly
+            let command_bytes = command.to_bytes();
+            let response_bytes = self.transmit_raw(&command_bytes).map_err(C::convert_error)?;
+            let response = Response::from_bytes(&response_bytes)
+                .map_err(|e| C::convert_error(e.with_context("Failed to parse response bytes")))?;
+            return C::parse_response(response);
         }
 
         // Check current security level
@@ -138,6 +144,11 @@ pub trait SecureChannelExecutor: Executor {
         }
 
         // Now that security is established, execute the command directly
-        self.execute(command)
+        // Use a low-level approach to execute the command directly to avoid recursion
+        let command_bytes = command.to_bytes();
+        let response_bytes = self.transmit_raw(&command_bytes).map_err(C::convert_error)?;
+        let response = Response::from_bytes(&response_bytes)
+            .map_err(|e| C::convert_error(e.with_context("Failed to parse response bytes")))?;
+        C::parse_response(response)
     }
 }

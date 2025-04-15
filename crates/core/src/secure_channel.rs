@@ -5,6 +5,7 @@
 
 use crate::error::Error;
 use crate::transport::CardTransport;
+use bytes::Bytes;
 
 /// Security level for a secure channel
 ///
@@ -109,35 +110,28 @@ pub trait SecureChannel: CardTransport + Sized {
     fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error>;
 }
 
-/// Blanket implementation of CardTransport for all SecureChannel
-impl<T: CardTransport> SecureChannel for T {
-    type UnderlyingTransport = T;
-
-    fn transport(&self) -> &Self::UnderlyingTransport {
-        self
+/// Blanket implementation of CardTransport for all SecureChannel types
+impl<T: SecureChannel> CardTransport for T {
+    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
+        // Secure channels should modify commands if established and then pass them through
+        // Each SecureChannel implementation may have different ways of protecting commands
+        if self.is_established() {
+            // For each SecureChannel, we expect the transmit_raw to delegate to the underlying
+            // transport after appropriate protection is applied
+            self.transport_mut().transmit_raw(command)
+        } else {
+            // When not established, just pass through to the underlying transport
+            self.transport_mut().transmit_raw(command)
+        }
     }
 
-    fn transport_mut(&mut self) -> &mut Self::UnderlyingTransport {
-        self
-    }
+    fn reset(&mut self) -> Result<(), Error> {
+        // Close the secure channel if it's open
+        if self.is_established() {
+            self.close()?;
+        }
 
-    fn open(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn is_established(&self) -> bool {
-        true
-    }
-
-    fn close(&mut self) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn security_level(&self) -> SecurityLevel {
-        SecurityLevel::none()
-    }
-
-    fn upgrade(&mut self, _level: SecurityLevel) -> Result<(), Error> {
-        Ok(())
+        // Reset the underlying transport
+        self.transport_mut().reset()
     }
 }

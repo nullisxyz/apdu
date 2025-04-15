@@ -109,6 +109,9 @@ impl SCP02Wrapper {
 }
 
 /// GPSecureChannel implements the necessary functionality for GlobalPlatform secure channels
+// Implement the SecureChannel trait for GPSecureChannel
+use nexum_apdu_core::secure_channel::SecureChannel;
+
 pub struct GPSecureChannel<T: CardTransport> {
     /// Session containing keys and state - this will be initialized during establish()
     session: Option<Session>,
@@ -157,6 +160,10 @@ impl<T: CardTransport> GPSecureChannel<T> {
 
     /// Authenticate the secure channel using EXTERNAL AUTHENTICATE
     fn authenticate(&mut self) -> Result<(), GPError> {
+        tracing::trace!(
+            "GPSecureChannel::authenticate called with current security_level={:?}",
+            self.security_level
+        );
         // Get session and wrapper (should be Some after establish was called)
         let session = self.session.as_ref().ok_or(GPError::NoSecureChannel)?;
 
@@ -195,9 +202,16 @@ impl<T: CardTransport> GPSecureChannel<T> {
         }
 
         // Set security level
-        self.security_level = SecurityLevel::auth_mac();
+        tracing::debug!(
+            "GPSecureChannel: changing security level from {:?} to {:?}",
+            self.security_level,
+            SecurityLevel::mac()
+        );
+        // MAC-only security level to match what SCP02 provides by default
+        self.security_level = SecurityLevel::mac();
 
         // Mark channel as established
+        tracing::debug!("GPSecureChannel: secure channel established");
         self.established = true;
 
         Ok(())
@@ -231,10 +245,85 @@ impl<T: CardTransport> GPSecureChannel<T> {
         // Just pass through the raw response
         Ok(Bytes::copy_from_slice(response))
     }
+}
 
-    /// Check if the secure channel is established
-    pub fn is_established(&self) -> bool {
+// CardTransport is automatically implemented for all SecureChannel types via the blanket implementation
+
+// Implement the SecureChannel trait for GPSecureChannel
+
+impl<T: CardTransport> SecureChannel for GPSecureChannel<T> {
+    type UnderlyingTransport = T;
+
+    fn transport(&self) -> &Self::UnderlyingTransport {
+        &self.transport
+    }
+
+    fn transport_mut(&mut self) -> &mut Self::UnderlyingTransport {
+        &mut self.transport
+    }
+
+    fn open(&mut self) -> Result<(), Error> {
+        self.open()
+    }
+
+    fn is_established(&self) -> bool {
         self.established
+    }
+
+    fn close(&mut self) -> Result<(), Error> {
+        self.close()
+    }
+
+    fn security_level(&self) -> SecurityLevel {
+        tracing::trace!(
+            "GPSecureChannel::security_level() returning {:?}",
+            self.security_level
+        );
+        self.security_level
+    }
+
+    fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error> {
+        self.upgrade(level)
+    }
+}
+
+// Implementation of methods for GPSecureChannel
+impl<T: CardTransport> GPSecureChannel<T> {
+    /// Helper method to protect a command if the secure channel is established
+    pub fn protect_and_transmit(&mut self, command: &[u8]) -> Result<Bytes, Error> {
+        tracing::trace!(
+            "GPSecureChannel::protect_and_transmit called with security_level={:?}, established={}",
+            self.security_level,
+            self.is_established()
+        );
+
+        // If secure channel is established, protect the command
+        if self.is_established() {
+            tracing::trace!("GPSecureChannel: applying protection to command");
+            // Apply protection
+            let protected = self.protect_command(command)?;
+
+            // Transmit protected command
+            let response = self.transport.transmit_raw(&protected)?;
+
+            // Process response
+            tracing::trace!("GPSecureChannel: processing protected response");
+            self.process_response(&response)
+        } else {
+            tracing::trace!("GPSecureChannel: passing through command to underlying transport");
+            // If not established, just pass through
+            self.transport.transmit_raw(command)
+        }
+    }
+
+    /// Get the current security level - this overrides the blanket implementation
+    /// from the SecureChannel trait to return the actual security level
+    pub fn security_level(&self) -> SecurityLevel {
+        tracing::trace!(
+            "GPSecureChannel::security_level() returning {:?}",
+            self.security_level
+        );
+        self.security_level
     }
 
     /// Open the secure channel
@@ -278,9 +367,19 @@ impl<T: CardTransport> GPSecureChannel<T> {
         }
     }
 
+    /// Check if the secure channel is established
+    pub fn is_established(&self) -> bool {
+        self.established
+    }
+
     /// Close the secure channel
     pub fn close(&mut self) -> Result<(), Error> {
         debug!("Closing GlobalPlatform SCP02 secure channel");
+        tracing::debug!(
+            "GPSecureChannel: closing channel, security level changing from {:?} to {:?}",
+            self.security_level,
+            SecurityLevel::none()
+        );
         self.established = false;
         self.security_level = SecurityLevel::none();
         self.session = None;
@@ -288,13 +387,14 @@ impl<T: CardTransport> GPSecureChannel<T> {
         Ok(())
     }
 
-    /// Get the current security level
-    pub fn security_level(&self) -> SecurityLevel {
-        self.security_level
-    }
-
     /// Upgrade the secure channel to the specified security level
     pub fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error> {
+        tracing::debug!(
+            "GPSecureChannel::upgrade called with current level={:?}, requested level={:?}",
+            self.security_level,
+            level
+        );
+
         // SCP02 doesn't support upgrading security level after establishment
         // We either have MAC protection or we don't
         if !self.is_established() {
@@ -323,180 +423,6 @@ impl<T: CardTransport> GPSecureChannel<T> {
         }
 
         Ok(())
-    }
-
-    /// Get the underlying transport
-    pub fn transport(&self) -> &T {
-        &self.transport
-    }
-
-    /// Get a mutable reference to the underlying transport
-    pub fn transport_mut(&mut self) -> &mut T {
-        &mut self.transport
-    }
-}
-
-/// GPSecureChannelTransport wraps a GPSecureChannel to provide the CardTransport trait
-#[derive(Debug)]
-pub struct GPSecureChannelTransport<T: CardTransport> {
-    /// The secure channel
-    secure_channel: GPSecureChannel<T>,
-}
-
-impl<T: CardTransport> GPSecureChannelTransport<T> {
-    /// Create a new secure channel transport wrapper with the given transport and keys
-    pub fn new(transport: T, keys: Keys) -> Self {
-        Self {
-            secure_channel: GPSecureChannel::new(transport, keys),
-        }
-    }
-
-    /// Get a reference to the wrapped secure channel
-    pub fn secure_channel(&self) -> &GPSecureChannel<T> {
-        &self.secure_channel
-    }
-
-    /// Get a mutable reference to the wrapped secure channel
-    pub fn secure_channel_mut(&mut self) -> &mut GPSecureChannel<T> {
-        &mut self.secure_channel
-    }
-
-    /// Open the secure channel
-    pub fn open(&mut self) -> Result<(), Error> {
-        self.secure_channel.open()
-    }
-
-    /// Close the secure channel
-    pub fn close(&mut self) -> Result<(), Error> {
-        self.secure_channel.close()
-    }
-
-    /// Check if the secure channel is established
-    pub fn is_established(&self) -> bool {
-        self.secure_channel.is_established()
-    }
-
-    /// Get the current security level
-    pub fn security_level(&self) -> SecurityLevel {
-        self.secure_channel.security_level()
-    }
-
-    /// Upgrade the secure channel to the specified security level
-    pub fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error> {
-        self.secure_channel.upgrade(level)
-    }
-}
-
-/// Implement CardTransport for GPSecureChannelTransport
-impl<T: CardTransport> CardTransport for GPSecureChannelTransport<T> {
-    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
-        // If channel is established, protect the command
-        if self.secure_channel.is_established() {
-            let protected_command = self.secure_channel.protect_command(command)?;
-            let raw_response = self
-                .secure_channel
-                .transport_mut()
-                .transmit_raw(&protected_command)?;
-            self.secure_channel.process_response(&raw_response)
-        } else {
-            // If channel isn't established, just pass through to the underlying transport
-            self.secure_channel.transport_mut().transmit_raw(command)
-        }
-    }
-
-    fn reset(&mut self) -> Result<(), Error> {
-        // Reset the secure channel state
-        self.secure_channel.close()?;
-
-        // Reset the underlying transport
-        self.secure_channel.transport_mut().reset()
-    }
-}
-
-/// Create a new GlobalPlatform secure channel transport with the given transport and keys
-pub fn create_secure_channel<T: CardTransport>(
-    transport: T,
-    keys: Keys,
-) -> GPSecureChannelTransport<T> {
-    GPSecureChannelTransport::new(transport, keys)
-}
-
-/// Implementation of nexum_apdu_core::SecureChannelExecutor for SecureChannelExecutor
-/// that uses a GPSecureChannelTransport
-pub struct GPSecureChannelExecutor<T: CardTransport> {
-    /// The secure channel transport
-    transport: GPSecureChannelTransport<T>,
-}
-
-impl<T: CardTransport> GPSecureChannelExecutor<T> {
-    /// Create a new secure channel executor with the given transport and keys
-    pub fn new(transport: T, keys: Keys) -> Self {
-        Self {
-            transport: GPSecureChannelTransport::new(transport, keys),
-        }
-    }
-}
-
-impl<T: CardTransport> fmt::Debug for GPSecureChannelExecutor<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GPSecureChannelExecutor")
-            .field("transport", &self.transport.secure_channel())
-            .finish()
-    }
-}
-
-/// Implement nexum_apdu_core::Executor for GPSecureChannelExecutor
-impl<T: CardTransport> nexum_apdu_core::Executor for GPSecureChannelExecutor<T> {
-    type Transport = GPSecureChannelTransport<T>;
-
-    fn transport(&self) -> &Self::Transport {
-        &self.transport
-    }
-
-    fn transport_mut(&mut self) -> &mut Self::Transport {
-        &mut self.transport
-    }
-
-    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
-        self.transport.transmit_raw(command)
-    }
-
-    fn execute<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
-    where
-        C: ApduCommand,
-    {
-        let cmd_bytes = command.to_bytes();
-        let response_bytes = self.transmit_raw(&cmd_bytes).map_err(C::convert_error)?;
-        C::parse_response_raw(response_bytes)
-    }
-
-    fn reset(&mut self) -> Result<(), Error> {
-        self.transport.reset()
-    }
-}
-
-/// Implement nexum_apdu_core::SecureChannelExecutor for GPSecureChannelExecutor
-impl<T: CardTransport> nexum_apdu_core::executor::SecureChannelExecutor
-    for GPSecureChannelExecutor<T>
-{
-    fn has_secure_channel(&self) -> bool {
-        self.transport.is_established()
-    }
-
-    fn open_secure_channel(&mut self) -> Result<(), Error> {
-        self.transport.open()
-    }
-
-    fn close_secure_channel(&mut self) -> Result<(), Error> {
-        self.transport.close()
-    }
-
-    fn security_level(&self) -> SecurityLevel {
-        self.transport.security_level()
-    }
-
-    fn upgrade_secure_channel(&mut self, level: SecurityLevel) -> Result<(), Error> {
-        self.transport.upgrade(level)
     }
 }
 
@@ -596,7 +522,7 @@ mod tests {
         let key = Key::<Scp02>::from_slice(&key_bytes);
         let keys = Keys::from_single_key(*key);
 
-        let mut sc_transport = GPSecureChannelTransport::new(transport, keys);
+        let mut sc_transport = GPSecureChannel::new(transport, keys);
 
         // Test establishment
         let result = sc_transport.open();
