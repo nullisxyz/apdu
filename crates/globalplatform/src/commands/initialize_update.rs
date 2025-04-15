@@ -49,8 +49,6 @@ apdu_pair! {
             }
 
             custom_parse = |response: &nexum_apdu_core::Response| -> Result<InitializeUpdateOk, InitializeUpdateError> {
-                use nexum_apdu_core::ApduResponse;
-
                 let status = response.status();
                 let sw1 = status.sw1;
                 let sw2 = status.sw2;

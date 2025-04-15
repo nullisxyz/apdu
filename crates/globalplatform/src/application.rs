@@ -5,27 +5,27 @@
 
 use std::path::Path;
 
-use nexum_apdu_core::error::ApduExecutorErrors;
+use nexum_apdu_core::executor::SecureChannelExecutor;
 use nexum_apdu_core::prelude::*;
+use nexum_apdu_core::secure_channel::SecurityLevel;
 
 use crate::commands::delete::DeleteOk;
 use crate::commands::get_status::GetStatusOk;
 use crate::commands::install::InstallOk;
 use crate::commands::select::SelectOk;
-use crate::{
-    Result,
-    commands::{DeleteCommand, GetStatusCommand, InstallCommand, LoadCommand, SelectCommand},
-    constants::{SECURITY_DOMAIN_AID, get_status_p1, load_p1},
-    load::{CapFileInfo, LoadCommandStream},
-    session::Session,
+use crate::commands::{
+    DeleteCommand, GetStatusCommand, InstallCommand, LoadCommand, SelectCommand,
 };
+use crate::constants::{SECURITY_DOMAIN_AID, get_status_p1, load_p1};
+use crate::error::{Error, Result};
+use crate::load::{CapFileInfo, LoadCommandStream};
+use crate::session::Session;
 
 /// GlobalPlatform card management application
 #[allow(missing_debug_implementations)]
 pub struct GlobalPlatform<E>
 where
-    E: Executor + ResponseAwareExecutor,
-    Error: From<<E as ApduExecutorErrors>::Error>,
+    E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
 {
     /// Card executor
     executor: E,
@@ -37,8 +37,7 @@ where
 
 impl<E> GlobalPlatform<E>
 where
-    E: Executor + ResponseAwareExecutor,
-    Error: From<<E as ApduExecutorErrors>::Error>,
+    E: Executor + ResponseAwareExecutor + SecureChannelExecutor,
 {
     /// Create a new GlobalPlatform instance
     pub const fn new(executor: E) -> Self {
@@ -60,7 +59,7 @@ where
         let cmd = SelectCommand::with_aid(aid.to_vec());
 
         // Execute command using typed execution flow
-        let response = self.executor.execute(&cmd)?;
+        let response = self.executor.execute(&cmd).map_err(Error::from)?;
 
         // Store response for possible later use
         if let Ok(raw_response) = self.executor.last_response() {
@@ -73,25 +72,25 @@ where
     /// Delete an object
     pub fn delete_object(&mut self, aid: &[u8]) -> Result<DeleteOk> {
         let cmd = DeleteCommand::delete_object(aid);
-        self.executor.execute(&cmd).map_err(Into::into)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Delete an object and related objects
     pub fn delete_object_and_related(&mut self, aid: &[u8]) -> Result<DeleteOk> {
         let cmd = DeleteCommand::delete_object_and_related(aid);
-        self.executor.execute(&cmd).map_err(Into::into)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Get the status of applications
     pub fn get_applications_status(&mut self) -> Result<GetStatusOk> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::APPLICATIONS);
-        self.executor.execute(&cmd).map_err(Into::into)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Get the status of load files
     pub fn get_load_files_status(&mut self) -> Result<GetStatusOk> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::EXEC_LOAD_FILES);
-        self.executor.execute(&cmd).map_err(Into::into)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Install a package for load
@@ -104,7 +103,7 @@ where
         let sd_aid = security_domain_aid.unwrap_or(SECURITY_DOMAIN_AID);
 
         let cmd = InstallCommand::for_load(package_aid, sd_aid);
-        self.executor.execute(&cmd).map_err(Into::into)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Install for install and make selectable
@@ -127,7 +126,7 @@ where
             &[] as &[u8], // Empty token
         );
 
-        self.executor.execute(&cmd).map_err(Into::into)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Load a CAP file
@@ -144,7 +143,7 @@ where
             // Get next block
             let (is_last, block_number, block_data) = stream
                 .next_block()
-                .ok_or(Error::Other("Unexpected end of data"))?;
+                .ok_or_else(|| Error::other("Unexpected end of data"))?;
 
             // Create LOAD command
             let p1 = if is_last {
@@ -155,10 +154,9 @@ where
             let cmd = LoadCommand::with_block_data(p1, block_number, block_data.to_vec());
 
             // Execute command
-            let _ = self
-                .executor
+            self.executor
                 .execute(&cmd)
-                .map_err(|_| Error::Other("Load failed"))?;
+                .map_err(|e| Error::from(e).with_context("Load failed"))?;
 
             // Call callback if provided
             if let Some(cb) = &mut callback {
@@ -181,7 +179,7 @@ where
 
         let package_aid = info
             .package_aid
-            .ok_or(Error::CapFile("Package AID not found"))?;
+            .ok_or_else(|| Error::CapFile("Package AID not found"))?;
 
         if applet_index >= info.applet_aids.len() {
             return Err(Error::CapFile("Invalid applet index"));
@@ -217,7 +215,7 @@ where
 
         let package_aid = info
             .package_aid
-            .ok_or(Error::CapFile("Package AID not found"))?;
+            .ok_or_else(|| Error::CapFile("Package AID not found"))?;
 
         if info.applet_aids.is_empty() {
             return Err(Error::CapFile("No applets found in CAP file"));
@@ -254,7 +252,7 @@ where
     }
 
     /// Get a mutable reference to the executor
-    pub const fn executor_mut(&mut self) -> &mut E {
+    pub fn executor_mut(&mut self) -> &mut E {
         &mut self.executor
     }
 
@@ -265,68 +263,32 @@ where
 
     /// Close the secure channel
     pub fn close_secure_channel(&mut self) -> Result<()> {
-        // Reset the executor (will drop any secure channel processors)
-        self.executor.reset()?;
+        // Close the secure channel through the executor
+        self.executor.close_secure_channel().map_err(Error::from)?;
         self.session = None;
         Ok(())
     }
-    
+
     /// Open a secure channel using default keys
     pub fn open_secure_channel(&mut self) -> Result<()> {
-        // Use default keys
-        let keys = crate::session::Keys::default();
-        self.open_secure_channel_with_keys(keys)
-    }
-
-    /// Open a secure channel with specific keys
-    pub fn open_secure_channel_with_keys(&mut self, keys: crate::session::Keys) -> Result<()> {
-        // First, reset the current channel if any
+        // First, reset any existing channel
         self.close_secure_channel()?;
         
         // Select the card manager (ISD) first
         self.select_card_manager()?;
         
-        // Create INITIALIZE UPDATE command
-        let mut host_challenge = [0u8; 8];
-        // Using a fixed challenge for simplicity - in a real app, use random data
-        host_challenge.copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
-        
-        let init_cmd = crate::commands::InitializeUpdateCommand::with_challenge(host_challenge.to_vec());
-        let init_response = self.executor.execute(&init_cmd)?;
-        
-        // Store init response for later processing
-        if let Ok(raw_response) = self.executor.last_response() {
-            self.last_response = Some(Bytes::copy_from_slice(raw_response));
-        }
-        
-        // Create the session from the response
-        let session = match self.last_response.as_ref() {
-            Some(data) => {
-                let init_resp = crate::commands::InitializeUpdateCommand::parse_response_raw(data.clone());
-                match crate::session::Session::from_response(&keys, &init_resp, host_challenge) {
-                    Ok(session) => session,
-                    Err(_) => return Err(Error::AuthenticationFailed("Failed to create session")),
-                }
-            },
-            None => return Err(Error::Other("No response data available")),
-        };
-        
-        // Store the session
-        self.session = Some(session);
-        
-        // Now send EXTERNAL AUTHENTICATE command
-        let auth_cmd = crate::commands::ExternalAuthenticateCommand::from_challenges(
-            self.session.as_ref().unwrap().keys().enc(),
-            self.session.as_ref().unwrap().sequence_counter(),
-            self.session.as_ref().unwrap().card_challenge(),
-            self.session.as_ref().unwrap().host_challenge(),
-        );
-        
-        // Execute the command
-        let auth_result = self.executor.execute(&auth_cmd)?;
-        
-        // If we got here without errors, the secure channel is established
-        Ok(())
+        // Open the secure channel through the executor
+        self.executor.open_secure_channel().map_err(Error::from)
+    }
+
+    /// Check if the secure channel is currently established
+    pub fn is_secure_channel_open(&self) -> bool {
+        self.executor.has_secure_channel()
+    }
+    
+    /// Get the current security level of the secure channel
+    pub fn security_level(&self) -> SecurityLevel {
+        self.executor.security_level()
     }
 
     /// Get the last response
@@ -340,7 +302,10 @@ where
         let get_data_cmd = Command::new(0x80, 0xCA, 0x00, 0x66).with_le(0x00);
 
         // Execute and get the response
-        let response = self.executor.transmit_raw(&get_data_cmd.to_bytes())?;
+        let response = self
+            .executor
+            .transmit_raw(&get_data_cmd.to_bytes())
+            .map_err(Error::from)?;
 
         // Check if the command was successful
         if response.len() >= 2 {
@@ -352,7 +317,7 @@ where
             }
         }
 
-        Err(Error::Other("Invalid response"))
+        Err(Error::other("Invalid response"))
     }
 
     /// Personalize a card application by storing data
@@ -361,10 +326,9 @@ where
         let cmd = InstallCommand::for_personalization(app_aid, data);
 
         // Execute the command
-        let _ = self
-            .executor
+        self.executor
             .execute(&cmd)
-            .map_err(|_| Error::Other("Personalization failed"))?;
+            .map_err(|e| Error::from(e).with_context("Personalization failed"))?;
 
         Ok(())
     }
@@ -374,7 +338,6 @@ where
 mod tests {
     use super::*;
     use hex_literal::hex;
-    use nexum_apdu_core::transport::error::TransportError;
 
     // Custom mock transport for tests
     #[derive(Debug)]
@@ -395,12 +358,9 @@ mod tests {
     }
 
     impl nexum_apdu_core::transport::CardTransport for TestTransport {
-        fn do_transmit_raw(
-            &mut self,
-            _command: &[u8],
-        ) -> std::result::Result<Bytes, TransportError> {
+        fn transmit_raw(&mut self, _command: &[u8]) -> std::result::Result<Bytes, nexum_apdu_core::Error> {
             if self.responses.is_empty() {
-                return Err(TransportError::Transmission)?;
+                return Err(nexum_apdu_core::Error::other("No response available"));
             }
 
             if self.responses.len() == 1 {
@@ -410,11 +370,7 @@ mod tests {
             }
         }
 
-        fn is_connected(&self) -> bool {
-            true
-        }
-
-        fn reset(&mut self) -> std::result::Result<(), TransportError> {
+        fn reset(&mut self) -> std::result::Result<(), nexum_apdu_core::Error> {
             Ok(())
         }
     }
@@ -433,7 +389,7 @@ mod tests {
         transport.add_response(mock_select_response());
 
         // Create executor with the transport
-        let executor: CardExecutor<TestTransport, Error> = CardExecutor::new(transport);
+        let executor = CardExecutor::new(transport);
 
         // Create GlobalPlatform instance
         let mut gp = GlobalPlatform::new(executor);

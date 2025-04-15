@@ -1,7 +1,17 @@
-use nexum_apdu_core::{error::ApduExecutorErrors, prelude::*};
+//! Error types for GlobalPlatform operations
+//!
+//! This module provides error types specific to GlobalPlatform card
+//! management operations.
+
+use nexum_apdu_core::prelude::*;
 use thiserror::Error;
 
-use crate::commands::{delete::DeleteError, external_authenticate::ExternalAuthenticateError, get_response::GetResponseError, get_status::GetStatusError, initialize_update::InitializeUpdateError, install::InstallError, load::LoadError, put_key::PutKeyError, select::SelectError, store_data::StoreDataError};
+use crate::commands::{
+    delete::DeleteError, external_authenticate::ExternalAuthenticateError,
+    get_response::GetResponseError, get_status::GetStatusError,
+    initialize_update::InitializeUpdateError, install::InstallError, load::LoadError,
+    put_key::PutKeyError, select::SelectError, store_data::StoreDataError,
+};
 
 /// Result type for GlobalPlatform operations
 pub type Result<T> = std::result::Result<T, Error>;
@@ -9,35 +19,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Error type for GlobalPlatform operations
 #[derive(Debug, Error)]
 pub enum Error {
-    /// Secure Channel errors
+    /// Core error from nexum_apdu_core
     #[error(transparent)]
-    SecureChannel(#[from] nexum_apdu_core::secure_channel::SecureChannelError),
-    
-    /// Transport-related errors
-    #[error(transparent)]
-    Transport(#[from] TransportError),
+    Core(#[from] nexum_apdu_core::Error),
 
-    /// Command-related errors
-    #[error(transparent)]
-    Command(#[from] nexum_apdu_core::command::error::CommandError),
-
-    /// Response-related errors
-    #[error(transparent)]
-    Response(#[from] nexum_apdu_core::response::error::ResponseError),
-
-    /// Status errors (for status words)
-    #[error(transparent)]
-    Status(#[from] nexum_apdu_core::response::error::StatusError),
-
-    /// Processor-related errors
-    #[error(transparent)]
-    Processor(#[from] nexum_apdu_core::processor::error::ProcessorError),
-
-    /// Secure protocol related errors
-    #[error(transparent)]
-    SecureProtocol(#[from] nexum_apdu_core::processor::error::SecureProtocolError),
-
-    /// Secure channel not established
+    /// Secure Channel not established
     #[error("Secure channel not established")]
     NoSecureChannel,
 
@@ -86,11 +72,28 @@ pub enum Error {
     #[error("Card returned error status: {0}")]
     CardStatus(StatusWord),
 
-    /// Other error
+    /// Session creation failed
+    #[error("Failed to create secure channel session: {0}")]
+    SessionCreationFailed(&'static str),
+
+    /// Context with source error
+    #[error("{context}: {source}")]
+    Context {
+        /// Contextual message
+        context: String,
+        /// Source error
+        source: Box<Self>,
+    },
+
+    /// Other error with dynamic message
+    #[error("{0}")]
+    Message(String),
+
+    /// Other error with static message
     #[error("{0}")]
     Other(&'static str),
 
-    // Errors associated with commands
+    /// Command-specific errors
     #[error(transparent)]
     DeleteError(#[from] DeleteError),
 
@@ -122,36 +125,46 @@ pub enum Error {
     StoreDataError(#[from] StoreDataError),
 }
 
-// Implement for our default error type
-impl ApduExecutorErrors for Error {
-    type Error = Self;
-}
-
-// Allow converting from any executor's error type to our Error type
-impl<E: ApduExecutorErrors> From<E::Error> for Error {
-    fn from(err: E::Error) -> Self {
-        // Convert via the nexum_apdu_core::Error intermediate type 
-        let core_error: nexum_apdu_core::Error = err.into();
-        match core_error {
-            nexum_apdu_core::Error::Transport(e) => Error::Transport(e),
-            nexum_apdu_core::Error::Response(e) => Error::Response(e),
-            nexum_apdu_core::Error::Processor(e) => Error::Processor(e),
-            nexum_apdu_core::Error::SecureProtocol(e) => Error::SecureProtocol(e),
-            _ => Error::Other("External error"),
+impl Error {
+    /// Create a new error with context information
+    pub fn with_context<S: Into<String>>(self, context: S) -> Self {
+        Self::Context {
+            context: context.into(),
+            source: Box::new(self),
         }
+    }
+
+    /// Create a new error with a static message
+    pub const fn other(message: &'static str) -> Self {
+        Self::Other(message)
+    }
+
+    /// Create a new error with a dynamic message
+    pub fn message<S: Into<String>>(message: S) -> Self {
+        Self::Message(message.into())
     }
 }
 
-// Implement conversion from our Error to nexum_apdu_core::Error
-impl From<Error> for nexum_apdu_core::Error {
-    fn from(err: Error) -> Self {
-        match err {
-            Error::Transport(e) => nexum_apdu_core::Error::Transport(e),
-            Error::Response(e) => nexum_apdu_core::Error::Response(e),
-            Error::Processor(e) => nexum_apdu_core::Error::Processor(e),
-            Error::SecureProtocol(e) => nexum_apdu_core::Error::SecureProtocol(e),
-            // For all other error types, convert to Other with static string
-            _ => nexum_apdu_core::Error::Other("GlobalPlatform error"),
-        }
+/// Extension trait for Result with context addition
+pub trait ResultExt<T> {
+    /// Add context to an error
+    fn context<S: Into<String>>(self, context: S) -> Result<T>;
+}
+
+impl<T> ResultExt<T> for Result<T> {
+    fn context<S: Into<String>>(self, context: S) -> Result<T> {
+        self.map_err(|e| e.with_context(context))
+    }
+}
+
+/// Extension trait for nexum_apdu_core::Result
+pub trait CoreResultExt<T> {
+    /// Convert core result to GlobalPlatform result
+    fn to_gp(self) -> Result<T>;
+}
+
+impl<T> CoreResultExt<T> for std::result::Result<T, nexum_apdu_core::Error> {
+    fn to_gp(self) -> Result<T> {
+        self.map_err(Error::from)
     }
 }

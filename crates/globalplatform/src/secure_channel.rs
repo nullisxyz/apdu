@@ -8,19 +8,18 @@ use std::fmt;
 use bytes::{BufMut, Bytes, BytesMut};
 use cipher::{Iv, Key};
 
-use nexum_apdu_core::prelude::*;
-use nexum_apdu_core::processor::SecureProtocolError;
-use nexum_apdu_core::secure_channel::{SecureChannel, SecureChannelError, SecurityLevel};
+use nexum_apdu_core::command::{ApduCommand, Command};
+use nexum_apdu_core::error::Error;
+use nexum_apdu_core::secure_channel::SecurityLevel;
 use nexum_apdu_core::transport::CardTransport;
 use rand::RngCore;
 use tracing::debug;
 
-use crate::Error;
-use crate::commands::external_authenticate::ExternalAuthenticateOk;
-use crate::commands::initialize_update::InitializeUpdateOk;
-use crate::commands::{ExternalAuthenticateCommand, InitializeUpdateCommand};
+use crate::commands::external_authenticate::{ExternalAuthenticateCommand, ExternalAuthenticateOk};
+use crate::commands::initialize_update::InitializeUpdateCommand;
 use crate::crypto::{HostChallenge, Scp02};
 use crate::crypto::{encrypt_icv, mac_full_3des};
+use crate::error::Error as GPError;
 use crate::session::{Keys, Session};
 
 /// SCP02 command wrapper
@@ -97,19 +96,19 @@ impl SCP02Wrapper {
     }
 
     /// Get the current ICV
-    pub const fn icv(&self) -> &Iv<Scp02> {
+    pub fn icv(&self) -> &Iv<Scp02> {
         &self.icv
     }
 
     /// Encrypt the ICV for the next operation
-    pub fn encrypt_icv(&mut self) -> Result<(), Error> {
+    pub fn encrypt_icv(&mut self) -> Result<(), GPError> {
         let encrypted = encrypt_icv(&self.mac_key, &self.icv);
         self.icv.copy_from_slice(&encrypted);
         Ok(())
     }
 }
 
-/// GPSecureChannel implements the SecureChannel trait for SCP02
+/// GPSecureChannel implements the necessary functionality for GlobalPlatform secure channels
 pub struct GPSecureChannel<T: CardTransport> {
     /// Session containing keys and state - this will be initialized during establish()
     session: Option<Session>,
@@ -157,17 +156,11 @@ impl<T: CardTransport> GPSecureChannel<T> {
     }
 
     /// Authenticate the secure channel using EXTERNAL AUTHENTICATE
-    fn authenticate(&mut self) -> Result<(), SecureChannelError> {
+    fn authenticate(&mut self) -> Result<(), GPError> {
         // Get session and wrapper (should be Some after establish was called)
-        let session = self
-            .session
-            .as_ref()
-            .ok_or_else(|| SecureChannelError::General("Session not initialized".to_string()))?;
+        let session = self.session.as_ref().ok_or(GPError::NoSecureChannel)?;
 
-        let wrapper = self
-            .wrapper
-            .as_mut()
-            .ok_or_else(|| SecureChannelError::General("Wrapper not initialized".to_string()))?;
+        let wrapper = self.wrapper.as_mut().ok_or(GPError::NoSecureChannel)?;
 
         // Create EXTERNAL AUTHENTICATE command
         let auth_cmd = ExternalAuthenticateCommand::from_challenges(
@@ -187,21 +180,22 @@ impl<T: CardTransport> GPSecureChannel<T> {
         let response_bytes = self
             .transport
             .transmit_raw(&wrapped_cmd.to_bytes())
-            .map_err(|e| SecureChannelError::Transport(e))?;
+            .map_err(GPError::from)?;
 
         // Parse response
-        let auth_result = ExternalAuthenticateCommand::parse_response_raw(response_bytes);
+        let auth_result = ExternalAuthenticateCommand::parse_response_raw(response_bytes)
+            .map_err(GPError::from)?;
 
         // Check if successful
-        if !matches!(auth_result, Ok(ExternalAuthenticateOk::Success)) {
+        if !matches!(auth_result, ExternalAuthenticateOk::Success) {
             self.established = false;
-            return Err(SecureChannelError::General(
-                "EXTERNAL AUTHENTICATE failed".to_string(),
+            return Err(GPError::AuthenticationFailed(
+                "EXTERNAL AUTHENTICATE failed",
             ));
         }
 
         // Set security level
-        self.security_level = SecurityLevel::authenticated_mac();
+        self.security_level = SecurityLevel::auth_mac();
 
         // Mark channel as established
         self.established = true;
@@ -209,68 +203,67 @@ impl<T: CardTransport> GPSecureChannel<T> {
         Ok(())
     }
 
-    /// Helper to convert protocol errors to secure channel errors
-    fn convert_error(error: SecureProtocolError) -> SecureChannelError {
-        match error {
-            SecureProtocolError::AuthenticationFailed(msg) => {
-                SecureChannelError::General(format!("Authentication failed: {}", msg))
-            }
-            SecureProtocolError::Session(msg) => {
-                SecureChannelError::General(format!("Session error: {}", msg))
-            }
-            SecureProtocolError::Response(e) => {
-                SecureChannelError::General(format!("Response error: {}", e))
-            }
-            SecureProtocolError::Other(msg) => SecureChannelError::General(msg),
-            SecureProtocolError::Protocol(msg) => {
-                SecureChannelError::General(format!("Protocol error: {}", msg))
-            }
-            SecureProtocolError::InsufficientSecurityLevel => {
-                SecureChannelError::InsufficientSecurityLevel(
-                    "Required security level not met".to_string(),
-                )
-            }
+    /// Process a command by applying secure channel protection
+    ///
+    /// This method wraps the command with security based on the current security level
+    pub fn protect_command(&mut self, command: &[u8]) -> Result<Vec<u8>, Error> {
+        if !self.is_established() {
+            return Err(Error::SecureChannelNotEstablished);
         }
+
+        let wrapper = self
+            .wrapper
+            .as_mut()
+            .ok_or_else(|| Error::message("Wrapper not initialized".to_string()))?;
+
+        let cmd = Command::from_bytes(command)
+            .map_err(|e| Error::message(format!("Invalid command: {}", e)))?;
+
+        let wrapped = wrapper.wrap_command(&cmd);
+        Ok(wrapped.to_bytes().to_vec())
     }
-}
 
-/// Create a new GlobalPlatform secure channel with the given transport and keys
-pub fn create_secure_channel<T: CardTransport>(transport: T, keys: Keys) -> GPSecureChannel<T> {
-    GPSecureChannel::new(transport, keys)
-}
+    /// Process a response by removing secure channel protection
+    ///
+    /// For SCP02, this is a passthrough since responses are not secured
+    pub fn process_response(&mut self, response: &[u8]) -> Result<Bytes, Error> {
+        // For SCP02, no response processing is needed as the card doesn't secure responses
+        // Just pass through the raw response
+        Ok(Bytes::copy_from_slice(response))
+    }
 
-impl<T: CardTransport> SecureChannel for GPSecureChannel<T> {
-    type UnderlyingTransport = T;
-
-    fn is_established(&self) -> bool {
+    /// Check if the secure channel is established
+    pub fn is_established(&self) -> bool {
         self.established
     }
 
-    fn establish(&mut self) -> Result<(), SecureChannelError> {
+    /// Open the secure channel
+    pub fn open(&mut self) -> Result<(), Error> {
         // Generate host challenge
         let mut host_challenge = HostChallenge::default();
-        rand::rng().fill_bytes(&mut host_challenge);
+        let mut rng = rand::rng();
+        rng.fill_bytes(&mut host_challenge);
 
         // Step 1: Send INITIALIZE UPDATE
         let init_cmd = InitializeUpdateCommand::with_challenge(host_challenge.to_vec());
         let response_bytes = self
             .transport
             .transmit_raw(&init_cmd.to_bytes())
-            .map_err(|e| SecureChannelError::Transport(e))?;
+            .map_err(|e| e.with_context("Failed to transmit INITIALIZE UPDATE command"))?;
 
         // Parse response
-        let init_response = InitializeUpdateCommand::parse_response_raw(response_bytes);
+        let init_response = InitializeUpdateCommand::parse_response_raw(response_bytes)
+            .map_err(|e| Error::message(format!("INITIALIZE UPDATE failed: {}", e)))?;
 
-        // Check for successful response
-        if !matches!(init_response, Ok(InitializeUpdateOk::Success { .. })) {
-            return Err(SecureChannelError::General(
-                "INITIALIZE UPDATE failed".to_string(),
-            ));
-        }
-
-        // Create session directly from response
-        let new_session = Session::from_response(&self.keys, &init_response, host_challenge)
-            .map_err(|e| SecureChannelError::General(e.to_string()))?;
+        // Create session directly from response - wrap in Ok() to match expected type
+        let wrapped_response = Ok(init_response);
+        let new_session =
+            match Session::from_response(&self.keys, &wrapped_response, host_challenge) {
+                Ok(session) => session,
+                Err(e) => {
+                    return Err(Error::message(format!("Failed to create session: {}", e)));
+                }
+            };
 
         // Initialize the session and wrapper
         self.session = Some(new_session);
@@ -279,49 +272,231 @@ impl<T: CardTransport> SecureChannel for GPSecureChannel<T> {
         ));
 
         // Step 2: Authenticate the channel (sends EXTERNAL AUTHENTICATE)
-        self.authenticate()
+        match self.authenticate() {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Error::message(format!("Authentication failed: {}", e))),
+        }
     }
 
-    fn close(&mut self) -> Result<(), SecureChannelError> {
+    /// Close the secure channel
+    pub fn close(&mut self) -> Result<(), Error> {
         debug!("Closing GlobalPlatform SCP02 secure channel");
         self.established = false;
         self.security_level = SecurityLevel::none();
+        self.session = None;
+        self.wrapper = None;
         Ok(())
     }
 
-    fn security_level(&self) -> SecurityLevel {
+    /// Get the current security level
+    pub fn security_level(&self) -> SecurityLevel {
         self.security_level
     }
 
-    fn protect_command(&mut self, command: &[u8]) -> Result<Vec<u8>, SecureChannelError> {
+    /// Upgrade the secure channel to the specified security level
+    pub fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error> {
+        // SCP02 doesn't support upgrading security level after establishment
+        // We either have MAC protection or we don't
         if !self.is_established() {
-            return Err(SecureChannelError::NotEstablished);
+            return Err(Error::SecureChannelNotEstablished);
         }
 
-        let wrapper = self
-            .wrapper
-            .as_mut()
-            .ok_or_else(|| SecureChannelError::General("Wrapper not initialized".to_string()))?;
+        // For SCP02, we can't upgrade beyond what was established during open()
+        if level.encryption && !self.security_level.encryption {
+            return Err(Error::message(
+                "SCP02 doesn't support upgrading to encryption after establishment".to_string(),
+            ));
+        }
 
-        let cmd = Command::from_bytes(command)
-            .map_err(|e| SecureChannelError::General(format!("Invalid command: {}", e)))?;
+        // We always have integrity (MAC) in SCP02
+        if level.integrity && !self.security_level.integrity {
+            return Err(Error::message(
+                "SCP02 always has integrity protection, but channel not established".to_string(),
+            ));
+        }
 
-        let wrapped = wrapper.wrap_command(&cmd);
-        Ok(wrapped.to_bytes().to_vec())
+        // For SCP02, we can't change authentication after establishment
+        if level.authentication && !self.security_level.authentication {
+            return Err(Error::message(
+                "SCP02 doesn't support upgrading to authentication after establishment".to_string(),
+            ));
+        }
+
+        Ok(())
     }
 
-    fn process_response(&mut self, response: &[u8]) -> Result<Bytes, SecureChannelError> {
-        // For SCP02, no response processing is needed as the card doesn't secure responses
-        // Just pass through the raw response
-        Ok(Bytes::copy_from_slice(response))
-    }
-
-    fn underlying_transport(&self) -> &Self::UnderlyingTransport {
+    /// Get the underlying transport
+    pub fn transport(&self) -> &T {
         &self.transport
     }
 
-    fn underlying_transport_mut(&mut self) -> &mut Self::UnderlyingTransport {
+    /// Get a mutable reference to the underlying transport
+    pub fn transport_mut(&mut self) -> &mut T {
         &mut self.transport
+    }
+}
+
+/// GPSecureChannelTransport wraps a GPSecureChannel to provide the CardTransport trait
+#[derive(Debug)]
+pub struct GPSecureChannelTransport<T: CardTransport> {
+    /// The secure channel
+    secure_channel: GPSecureChannel<T>,
+}
+
+impl<T: CardTransport> GPSecureChannelTransport<T> {
+    /// Create a new secure channel transport wrapper with the given transport and keys
+    pub fn new(transport: T, keys: Keys) -> Self {
+        Self {
+            secure_channel: GPSecureChannel::new(transport, keys),
+        }
+    }
+
+    /// Get a reference to the wrapped secure channel
+    pub fn secure_channel(&self) -> &GPSecureChannel<T> {
+        &self.secure_channel
+    }
+
+    /// Get a mutable reference to the wrapped secure channel
+    pub fn secure_channel_mut(&mut self) -> &mut GPSecureChannel<T> {
+        &mut self.secure_channel
+    }
+
+    /// Open the secure channel
+    pub fn open(&mut self) -> Result<(), Error> {
+        self.secure_channel.open()
+    }
+
+    /// Close the secure channel
+    pub fn close(&mut self) -> Result<(), Error> {
+        self.secure_channel.close()
+    }
+
+    /// Check if the secure channel is established
+    pub fn is_established(&self) -> bool {
+        self.secure_channel.is_established()
+    }
+
+    /// Get the current security level
+    pub fn security_level(&self) -> SecurityLevel {
+        self.secure_channel.security_level()
+    }
+
+    /// Upgrade the secure channel to the specified security level
+    pub fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error> {
+        self.secure_channel.upgrade(level)
+    }
+}
+
+/// Implement CardTransport for GPSecureChannelTransport
+impl<T: CardTransport> CardTransport for GPSecureChannelTransport<T> {
+    fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
+        // If channel is established, protect the command
+        if self.secure_channel.is_established() {
+            let protected_command = self.secure_channel.protect_command(command)?;
+            let raw_response = self
+                .secure_channel
+                .transport_mut()
+                .transmit_raw(&protected_command)?;
+            self.secure_channel.process_response(&raw_response)
+        } else {
+            // If channel isn't established, just pass through to the underlying transport
+            self.secure_channel.transport_mut().transmit_raw(command)
+        }
+    }
+
+    fn reset(&mut self) -> Result<(), Error> {
+        // Reset the secure channel state
+        self.secure_channel.close()?;
+
+        // Reset the underlying transport
+        self.secure_channel.transport_mut().reset()
+    }
+}
+
+/// Create a new GlobalPlatform secure channel transport with the given transport and keys
+pub fn create_secure_channel<T: CardTransport>(
+    transport: T,
+    keys: Keys,
+) -> GPSecureChannelTransport<T> {
+    GPSecureChannelTransport::new(transport, keys)
+}
+
+/// Implementation of nexum_apdu_core::SecureChannelExecutor for SecureChannelExecutor
+/// that uses a GPSecureChannelTransport
+pub struct GPSecureChannelExecutor<T: CardTransport> {
+    /// The secure channel transport
+    transport: GPSecureChannelTransport<T>,
+}
+
+impl<T: CardTransport> GPSecureChannelExecutor<T> {
+    /// Create a new secure channel executor with the given transport and keys
+    pub fn new(transport: T, keys: Keys) -> Self {
+        Self {
+            transport: GPSecureChannelTransport::new(transport, keys),
+        }
+    }
+}
+
+impl<T: CardTransport> fmt::Debug for GPSecureChannelExecutor<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GPSecureChannelExecutor")
+            .field("transport", &self.transport.secure_channel())
+            .finish()
+    }
+}
+
+/// Implement nexum_apdu_core::Executor for GPSecureChannelExecutor
+impl<T: CardTransport> nexum_apdu_core::Executor for GPSecureChannelExecutor<T> {
+    type Transport = GPSecureChannelTransport<T>;
+
+    fn transport(&self) -> &Self::Transport {
+        &self.transport
+    }
+
+    fn transport_mut(&mut self) -> &mut Self::Transport {
+        &mut self.transport
+    }
+
+    fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
+        self.transport.transmit_raw(command)
+    }
+
+    fn execute<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
+    where
+        C: ApduCommand,
+    {
+        let cmd_bytes = command.to_bytes();
+        let response_bytes = self.transmit_raw(&cmd_bytes).map_err(C::convert_error)?;
+        C::parse_response_raw(response_bytes)
+    }
+
+    fn reset(&mut self) -> Result<(), Error> {
+        self.transport.reset()
+    }
+}
+
+/// Implement nexum_apdu_core::SecureChannelExecutor for GPSecureChannelExecutor
+impl<T: CardTransport> nexum_apdu_core::executor::SecureChannelExecutor
+    for GPSecureChannelExecutor<T>
+{
+    fn has_secure_channel(&self) -> bool {
+        self.transport.is_established()
+    }
+
+    fn open_secure_channel(&mut self) -> Result<(), Error> {
+        self.transport.open()
+    }
+
+    fn close_secure_channel(&mut self) -> Result<(), Error> {
+        self.transport.close()
+    }
+
+    fn security_level(&self) -> SecurityLevel {
+        self.transport.security_level()
+    }
+
+    fn upgrade_secure_channel(&mut self, level: SecurityLevel) -> Result<(), Error> {
+        self.transport.upgrade(level)
     }
 }
 
@@ -352,7 +527,7 @@ mod tests {
     }
 
     impl CardTransport for TestMockTransport {
-        fn do_transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, TransportError> {
+        fn transmit_raw(&mut self, command: &[u8]) -> Result<Bytes, Error> {
             self.commands.push(command.to_vec());
 
             // Return pre-configured responses or error if no more responses
@@ -360,49 +535,20 @@ mod tests {
                 let response = self.responses.remove(0);
                 Ok(Bytes::copy_from_slice(&response))
             } else {
-                Err(TransportError::Other("No more test responses".to_string()))
+                Err(Error::other("No more test responses"))
             }
         }
 
-        fn is_connected(&self) -> bool {
-            true
-        }
-
-        fn reset(&mut self) -> Result<(), TransportError> {
+        fn reset(&mut self) -> Result<(), Error> {
             Ok(())
         }
     }
 
-    fn create_test_session() -> Session {
-        // Test keys - DON'T USE IN PRODUCTION
-        let key_bytes = hex!("404142434445464748494A4B4C4D4E4F");
-        let key = Key::<Scp02>::from_slice(&key_bytes);
-
-        let keys = Keys::from_single_key(*key);
-
-        // Create a dummy response for testing
-        let dummy_response = Bytes::from_static(&[
-            // Key diversification data (10 bytes)
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // Key version number
-            0x01, // SCP identifier
-            0x02, // Sequence counter
-            0x00, 0x00, 0x00, // Card challenge
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Card cryptogram
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // Status words
-            0x90, 0x00,
-        ]);
-        let init_response = InitializeUpdateCommand::parse_response_raw(dummy_response);
-
-        // Create test session with the test keys
-        Session::from_response(&keys, &init_response, HostChallenge::default())
-            .expect("Failed to create test session")
-    }
-
     #[test]
     fn test_wrap_command() {
-        let session = create_test_session();
-        let mut wrapper = SCP02Wrapper::new(*session.keys().mac());
+        let key_bytes = hex!("404142434445464748494A4B4C4D4E4F");
+        let key = Key::<Scp02>::from_slice(&key_bytes);
+        let mut wrapper = SCP02Wrapper::new(*key);
 
         // Test command: SELECT by AID
         let command = Command::new(0x00, 0xA4, 0x04, 0x00)
@@ -450,10 +596,10 @@ mod tests {
         let key = Key::<Scp02>::from_slice(&key_bytes);
         let keys = Keys::from_single_key(*key);
 
-        let mut secure_channel = GPSecureChannel::new(transport, keys);
+        let mut sc_transport = GPSecureChannelTransport::new(transport, keys);
 
         // Test establishment
-        let result = secure_channel.establish();
+        let result = sc_transport.open();
 
         // For this test, we'll just verify the function call completes
         // In a real test, we would verify the cryptograms, but that requires more test setup
