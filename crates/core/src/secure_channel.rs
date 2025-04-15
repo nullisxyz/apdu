@@ -102,37 +102,6 @@ pub trait SecureChannel: CardTransport + Sized {
     fn upgrade(&mut self, level: SecurityLevel) -> Result<(), Error>;
 }
 
-/// Null secure channel implementation
-///
-/// This implementation simply passes everything through to the underlying transport.
-#[derive(Debug, Clone)]
-pub struct NullSecureChannel<T> {
-    /// Underlying transport
-    transport: T,
-}
-
-impl<T: CardTransport> NullSecureChannel<T> {
-    /// Create a new null secure channel
-    pub fn new(transport: T) -> Self {
-        Self { transport }
-    }
-
-    /// Unwrap the transport
-    pub fn into_inner(self) -> T {
-        self.transport
-    }
-}
-
-impl<T: CardTransport> CardTransport for NullSecureChannel<T> {
-    fn transmit_raw(&mut self, command: &[u8]) -> Result<bytes::Bytes, Error> {
-        self.transport.transmit_raw(command)
-    }
-
-    fn reset(&mut self) -> Result<(), Error> {
-        self.transport.reset()
-    }
-}
-
 /// Blanket implementation of CardTransport for all SecureChannel
 impl<T: CardTransport> SecureChannel for T {
     type UnderlyingTransport = T;

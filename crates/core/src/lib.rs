@@ -39,7 +39,7 @@ pub use processor::CommandProcessor;
 pub use processor::pipeline::ProcessorPipeline;
 pub use response::status::StatusWord;
 pub use response::{ApduResponse, Response};
-pub use secure_channel::{NullSecureChannel, SecureChannel, SecurityLevel};
+pub use secure_channel::{SecureChannel, SecurityLevel};
 pub use transport::CardTransport;
 
 /// Prelude module containing commonly used traits and types
@@ -66,7 +66,7 @@ pub mod prelude {
     pub use crate::processor::processors::{GetResponseProcessor, IdentityProcessor};
 
     // Secure channel layer
-    pub use crate::secure_channel::{NullSecureChannel, SecureChannel, SecurityLevel};
+    pub use crate::secure_channel::{SecureChannel, SecurityLevel};
 
     // Executor layer
     pub use crate::executor::Executor;
