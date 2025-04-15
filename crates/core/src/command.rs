@@ -127,7 +127,7 @@ pub trait ApduCommand {
         length
     }
 
-    /// Whether this command requires a secure channel
+    /// The security level that this command requires, defaulting to none
     fn required_security_level(&self) -> SecurityLevel {
         SecurityLevel::none()
     }
