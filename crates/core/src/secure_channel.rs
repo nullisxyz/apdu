@@ -94,7 +94,7 @@ pub trait SecureChannel: CardTransport + Sized {
     fn transport_mut(&mut self) -> &mut Self::UnderlyingTransport;
 
     /// Establish secure channel
-    fn establish(&mut self) -> Result<(), Error>;
+    fn open(&mut self) -> Result<(), Error>;
 
     /// Check if secure channel is established
     fn is_established(&self) -> bool;
@@ -121,7 +121,7 @@ impl<T: CardTransport> SecureChannel for T {
         self
     }
 
-    fn establish(&mut self) -> Result<(), Error> {
+    fn open(&mut self) -> Result<(), Error> {
         Ok(())
     }
 

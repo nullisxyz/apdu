@@ -64,8 +64,9 @@ pub trait Executor: Send + Sync + fmt::Debug {
     /// Execute a typed APDU command and return the command's success type
     ///
     /// This method returns the command's Success type directly for more
-    /// idiomatic error handling with the ? operator.
-    fn execute<C>(&mut self, command: &C) -> Result<C::Success, Error>
+    /// idiomatic error handling with the ? operator. The error type is the command's
+    /// own error type, allowing commands to define their own error handling.
+    fn execute<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
     where
         C: ApduCommand;
 

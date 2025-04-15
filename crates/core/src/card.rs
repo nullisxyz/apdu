@@ -155,15 +155,16 @@ where
         Ok(())
     }
 
-    fn execute<C>(&mut self, command: &C) -> Result<C::Success, Error>
+    fn execute<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
     where
         C: ApduCommand,
     {
         // Execute normally - send command bytes and parse response
         let command_bytes = command.to_bytes();
-        let response_bytes = self.transmit_raw(&command_bytes)?;
-        let response =
-            Response::from_bytes(&response_bytes).context("Failed to parse response bytes")?;
+        let response_bytes = self.transmit_raw(&command_bytes)
+            .map_err(C::convert_error)?;
+        let response = Response::from_bytes(&response_bytes)
+            .map_err(|e| C::convert_error(e.with_context("Failed to parse response bytes")))?;
 
         // Parse the response using the command's parse_response method
         C::parse_response(response)
@@ -210,7 +211,7 @@ where
     /// Establish the secure channel with the card
     pub fn establish_secure_channel(&mut self) -> Result<(), Error> {
         self.transport
-            .establish()
+            .open()
             .context("Failed to establish secure channel")
     }
 
@@ -219,7 +220,7 @@ where
     /// This method checks if the command requires a certain security level,
     /// attempts to upgrade the secure channel if necessary, and then executes
     /// the command.
-    pub fn execute_secure<C>(&mut self, command: &C) -> Result<C::Success, Error>
+    pub fn execute_secure<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
     where
         C: ApduCommand,
     {
@@ -233,20 +234,22 @@ where
         if !current_level.satisfies(&required_level) && !required_level.is_none() {
             // If the secure channel isn't established, try to establish it
             if !self.has_secure_channel() {
-                self.establish_secure_channel()?;
+                self.establish_secure_channel()
+                    .map_err(C::convert_error)?;
             }
 
             // Try to upgrade the channel
             self.transport
                 .upgrade(required_level)
-                .context("Failed to upgrade secure channel")?;
+                .context("Failed to upgrade secure channel")
+                .map_err(C::convert_error)?;
 
             // Check if upgrade was successful
             if !self.security_level().satisfies(&required_level) {
-                return Err(Error::InsufficientSecurityLevel {
+                return Err(C::convert_error(Error::InsufficientSecurityLevel {
                     required: required_level,
                     current: self.security_level(),
-                });
+                }));
             }
         }
 

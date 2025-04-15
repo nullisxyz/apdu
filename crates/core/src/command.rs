@@ -23,6 +23,9 @@ pub trait ApduCommand {
 
     /// Error response type
     type Error: fmt::Debug;
+    
+    /// Convert core Error to command-specific error type
+    fn convert_error(error: Error) -> Self::Error;
 
     /// Command class (CLA)
     fn class(&self) -> u8;
@@ -145,11 +148,12 @@ pub trait ApduCommand {
     }
 
     /// Parse response into the command's response type
-    fn parse_response(response: Response) -> Result<Self::Success, Error>;
+    fn parse_response(response: Response) -> Result<Self::Success, Self::Error>;
 
     /// Parse raw bytes into the command's response type
-    fn parse_response_raw(bytes: Bytes) -> Result<Self::Success, Error> {
-        let response = Response::from_bytes(&bytes)?;
+    fn parse_response_raw(bytes: Bytes) -> Result<Self::Success, Self::Error> {
+        let response = Response::from_bytes(&bytes)
+            .map_err(Self::convert_error)?;
         Self::parse_response(response)
     }
 }
@@ -286,6 +290,10 @@ impl Command {
 impl ApduCommand for Command {
     type Success = Response;
     type Error = Error;
+    
+    fn convert_error(error: Error) -> Self::Error {
+        error
+    }
 
     fn class(&self) -> u8 {
         self.cla
