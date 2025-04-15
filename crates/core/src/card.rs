@@ -8,7 +8,7 @@ use std::fmt;
 use crate::Response;
 use crate::command::{ApduCommand, Command};
 use crate::error::{Error, ResultExt};
-use crate::executor::{Executor, ResponseAwareExecutor};
+use crate::executor::{Executor, ResponseAwareExecutor, SecureChannelExecutor};
 use crate::processor::CommandProcessor;
 use crate::processor::pipeline::ProcessorPipeline;
 use crate::secure_channel::{SecureChannel, SecurityLevel};
@@ -161,7 +161,8 @@ where
     {
         // Execute normally - send command bytes and parse response
         let command_bytes = command.to_bytes();
-        let response_bytes = self.transmit_raw(&command_bytes)
+        let response_bytes = self
+            .transmit_raw(&command_bytes)
             .map_err(C::convert_error)?;
         let response = Response::from_bytes(&response_bytes)
             .map_err(|e| C::convert_error(e.with_context("Failed to parse response bytes")))?;
@@ -202,71 +203,75 @@ where
         self.transport = secure_channel;
         Ok(())
     }
-
-    /// Check if the executor has an established secure channel
-    pub fn has_secure_channel(&self) -> bool {
-        self.transport.is_established()
-    }
-
-    /// Establish the secure channel with the card
-    pub fn establish_secure_channel(&mut self) -> Result<(), Error> {
-        self.transport
-            .open()
-            .context("Failed to establish secure channel")
-    }
-
-    /// Execute a command with security level checking
+    
+    /// Execute a command with automatic security level checking
     ///
-    /// This method checks if the command requires a certain security level,
-    /// attempts to upgrade the secure channel if necessary, and then executes
-    /// the command.
-    pub fn execute_secure<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
+    /// This overrides the base execute method to automatically handle secure channel
+    /// requirements when the transport is a SecureChannel. Users don't need to call
+    /// execute_secure explicitly - the execute method will handle security automatically.
+    pub fn execute<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
     where
         C: ApduCommand,
     {
         // Check security level requirement
         let required_level = command.required_security_level();
 
-        // Check current security level
-        let current_level = self.transport.security_level();
-
-        // If security level is insufficient, try to upgrade the channel
-        if !current_level.satisfies(&required_level) && !required_level.is_none() {
-            // If the secure channel isn't established, try to establish it
-            if !self.has_secure_channel() {
-                self.establish_secure_channel()
-                    .map_err(C::convert_error)?;
-            }
-
-            // Try to upgrade the channel
-            self.transport
-                .upgrade(required_level)
-                .context("Failed to upgrade secure channel")
-                .map_err(C::convert_error)?;
-
-            // Check if upgrade was successful
-            if !self.security_level().satisfies(&required_level) {
-                return Err(C::convert_error(Error::InsufficientSecurityLevel {
-                    required: required_level,
-                    current: self.security_level(),
-                }));
-            }
+        // If no security required, use the standard execute method
+        if required_level.is_none() {
+            return self.execute_without_security(command);
         }
 
-        // Now that security is established, execute the command directly
-        self.execute(command)
+        // Otherwise, use the secure execution path
+        <Self as SecureChannelExecutor>::execute_secure(self, command)
     }
 
-    /// Close an established secure channel
-    pub fn close_secure_channel(&mut self) -> Result<(), Error> {
+    /// Execute without security checks - internal method to avoid recursion
+    fn execute_without_security<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
+    where
+        C: ApduCommand,
+    {
+        // Execute normally - send command bytes and parse response
+        let command_bytes = command.to_bytes();
+        let response_bytes = self
+            .transmit_raw(&command_bytes)
+            .map_err(C::convert_error)?;
+        let response = Response::from_bytes(&response_bytes)
+            .map_err(|e| C::convert_error(e.with_context("Failed to parse response bytes")))?;
+
+        // Parse the response using the command's parse_response method
+        C::parse_response(response)
+    }
+}
+
+// Implement SecureChannelExecutor for CardExecutor when transport is a SecureChannel
+impl<S> SecureChannelExecutor for CardExecutor<S>
+where
+    S: SecureChannel,
+{
+    fn has_secure_channel(&self) -> bool {
+        self.transport.is_established()
+    }
+
+    fn open_secure_channel(&mut self) -> Result<(), Error> {
+        self.transport
+            .open()
+            .context("Failed to establish secure channel")
+    }
+
+    fn close_secure_channel(&mut self) -> Result<(), Error> {
         self.transport
             .close()
             .context("Failed to close secure channel")
     }
 
-    /// Get current security level of the secure channel
-    pub fn security_level(&self) -> SecurityLevel {
+    fn security_level(&self) -> SecurityLevel {
         self.transport.security_level()
+    }
+    
+    fn upgrade_secure_channel(&mut self, level: SecurityLevel) -> Result<(), Error> {
+        self.transport
+            .upgrade(level)
+            .context("Failed to upgrade secure channel")
     }
 }
 

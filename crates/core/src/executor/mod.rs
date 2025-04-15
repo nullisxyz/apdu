@@ -9,6 +9,7 @@ use std::fmt;
 
 use crate::command::{ApduCommand, Command};
 use crate::error::Error;
+use crate::secure_channel::SecurityLevel;
 use crate::{CardTransport, Response};
 use bytes::Bytes;
 use tracing::{debug, instrument, trace};
@@ -72,4 +73,71 @@ pub trait Executor: Send + Sync + fmt::Debug {
 
     /// Reset the executor, including the transport
     fn reset(&mut self) -> Result<(), Error>;
+}
+
+/// Extension trait for executors that support secure channel operations
+///
+/// This trait extends the base Executor trait with methods specific to secure channel
+/// management and execution. It is implemented for executors that have a transport
+/// which implements the SecureChannel trait.
+pub trait SecureChannelExecutor: Executor {
+    /// Check if the executor has an established secure channel
+    fn has_secure_channel(&self) -> bool;
+
+    /// Open  the secure channel with the card
+    fn open_secure_channel(&mut self) -> Result<(), Error>;
+
+    /// Close an established secure channel
+    fn close_secure_channel(&mut self) -> Result<(), Error>;
+
+    /// Get current security level of the secure channel
+    fn security_level(&self) -> SecurityLevel;
+
+    /// Upgrade the secure channel to the specified security level
+    fn upgrade_secure_channel(&mut self, level: SecurityLevel) -> Result<(), Error>;
+
+    /// Execute a command with security level checking
+    ///
+    /// This method checks if the command requires a certain security level,
+    /// attempts to upgrade the secure channel if necessary, and then executes
+    /// the command. If the command doesn't require a secure channel or if the
+    /// security level is already sufficient, it will execute the command normally.
+    fn execute_secure<C>(&mut self, command: &C) -> Result<C::Success, C::Error>
+    where
+        C: ApduCommand,
+    {
+        // Check security level requirement
+        let required_level = command.required_security_level();
+
+        // If no security required, just execute normally
+        if required_level.is_none() {
+            return self.execute(command);
+        }
+
+        // Check current security level
+        let current_level = self.security_level();
+
+        // If security level is insufficient, try to upgrade the channel
+        if !current_level.satisfies(&required_level) {
+            // If the secure channel isn't established, try to establish it
+            if !self.has_secure_channel() {
+                self.open_secure_channel().map_err(C::convert_error)?;
+            }
+
+            // Try to upgrade the channel to the required level
+            self.upgrade_secure_channel(required_level)
+                .map_err(C::convert_error)?;
+
+            // Check if security level is now sufficient
+            if !self.security_level().satisfies(&required_level) {
+                return Err(C::convert_error(Error::InsufficientSecurityLevel {
+                    required: required_level,
+                    current: self.security_level(),
+                }));
+            }
+        }
+
+        // Now that security is established, execute the command directly
+        self.execute(command)
+    }
 }
