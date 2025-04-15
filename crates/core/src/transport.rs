@@ -29,23 +29,16 @@ mod mock {
 
     /// Mock transport for testing
     #[derive(Debug)]
-    pub struct MockTransport {
+    pub(crate) struct MockTransport {
         /// Response bytes to return
         pub response: Mutex<Bytes>,
     }
 
     impl MockTransport {
         /// Create a new mock transport with a fixed response
-        pub fn with_response(response: Bytes) -> Self {
+        pub(crate) fn with_response(response: Bytes) -> Self {
             Self {
                 response: Mutex::new(response),
-            }
-        }
-
-        /// Set the response to return
-        pub fn set_response(&self, response: Bytes) {
-            if let Ok(mut locked_response) = self.response.lock() {
-                *locked_response = response;
             }
         }
     }
