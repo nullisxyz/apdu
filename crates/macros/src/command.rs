@@ -143,6 +143,10 @@ pub(crate) fn expand_command(
         impl nexum_apdu_core::ApduCommand for #command_name {
             type Success = #ok_name;
             type Error = #error_name;
+            
+            fn convert_error(error: nexum_apdu_core::Error) -> Self::Error {
+                Self::Error::ResponseError(error)
+            }
 
             fn class(&self) -> u8 {
                 #cla

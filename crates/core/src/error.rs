@@ -8,7 +8,7 @@ use crate::response::status::StatusWord;
 use crate::secure_channel::SecurityLevel;
 
 /// Core error type that encompasses all possible errors in the crate
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, Eq, PartialEq, thiserror::Error)]
 pub enum Error {
     //
     // Transport related errors
@@ -108,7 +108,7 @@ pub enum Error {
         /// Contextual message
         context: String,
         /// Source error
-        source: Box<Error>,
+        source: Box<Self>,
     },
 
     /// Other error with static message

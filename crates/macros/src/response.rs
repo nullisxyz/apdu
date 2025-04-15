@@ -794,14 +794,14 @@ pub(crate) fn expand_response(
         // For custom parser, we use the provided parser
         let custom_parser = response.custom_parser.as_ref().unwrap();
         quote! {
-            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, nexum_apdu_core::Error> {
-                (#custom_parser)(&response).map_err(|e| e.into())
+            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, Self::Error> {
+                (#custom_parser)(&response)
             }
         }
     } else {
         // Standard parser implementation
         quote! {
-            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, nexum_apdu_core::Error> {
+            fn parse_response(response: nexum_apdu_core::Response) -> Result<Self::Success, Self::Error> {
                 let status = response.status();
                 let sw1 = status.sw1;
                 let sw2 = status.sw2;
@@ -810,7 +810,7 @@ pub(crate) fn expand_response(
                 match (sw1, sw2) {
                     #(#match_arms,)*
                     // For unmatched status words, use the Unknown variant
-                    _ => Err(Self::Error::Unknown { sw1, sw2 }).map_err(|e| e.into()),
+                    _ => Err(Self::Error::Unknown { sw1, sw2 }),
                 }
             }
         }
