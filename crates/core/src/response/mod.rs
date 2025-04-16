@@ -103,7 +103,7 @@ impl Response {
     }
 
     /// Get the correct length if wrong length was indicated
-    pub fn correct_length(&self) -> Option<u8> {
+    pub const fn correct_length(&self) -> Option<u8> {
         if self.indicates_wrong_length() {
             Some(self.status.sw2)
         } else {
@@ -113,11 +113,10 @@ impl Response {
 
     /// Convert to bytes
     pub fn to_bytes(&self) -> Bytes {
-        let result = if let Some(data) = &self.data {
-            data.clone()
-        } else {
-            Bytes::new()
-        };
+        let result = self
+            .data
+            .as_ref()
+            .map_or_else(Bytes::new, |data| data.clone());
 
         let status_bytes = [self.status.sw1, self.status.sw2];
         let mut combined = bytes::BytesMut::with_capacity(result.len() + 2);

@@ -62,8 +62,7 @@ impl ProcessorPipeline {
             Response::from_bytes(&response_bytes).context("Failed to parse response")
         } else {
             // Find the first applicable processor
-            for processor in &self.processors {
-                // We need to cast our adapter to the trait object
+            if let Some(processor) = self.processors.first() {
                 let result = processor.process_command_with_adapter(
                     command,
                     adapter as &mut dyn TransportAdapterTrait,
