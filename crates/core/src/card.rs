@@ -73,7 +73,7 @@ where
     }
 
     /// Get a mutable reference to the processor pipeline
-    pub fn pipeline_mut(&mut self) -> &mut ProcessorPipeline {
+    pub const fn pipeline_mut(&mut self) -> &mut ProcessorPipeline {
         &mut self.pipeline
     }
 
@@ -189,12 +189,12 @@ where
     S: SecureChannel,
 {
     /// Get a reference to the secure channel transport
-    pub fn secure_channel(&self) -> &S {
+    pub const fn secure_channel(&self) -> &S {
         &self.transport
     }
 
     /// Get a mutable reference to the secure channel transport
-    pub fn secure_channel_mut(&mut self) -> &mut S {
+    pub const fn secure_channel_mut(&mut self) -> &mut S {
         &mut self.transport
     }
 

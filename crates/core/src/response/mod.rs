@@ -28,12 +28,12 @@ pub struct Response {
 
 impl Response {
     /// Create a new response
-    pub fn new(status: StatusWord, data: Option<Bytes>) -> Self {
+    pub const fn new(status: StatusWord, data: Option<Bytes>) -> Self {
         Self { status, data }
     }
 
     /// Create a success response (status 9000)
-    pub fn success(data: Option<Bytes>) -> Self {
+    pub const fn success(data: Option<Bytes>) -> Self {
         Self {
             status: StatusWord::new(0x90, 0x00),
             data,
@@ -41,7 +41,7 @@ impl Response {
     }
 
     /// Create a response with just a status word
-    pub fn status_only(status: StatusWord) -> Self {
+    pub const fn status_only(status: StatusWord) -> Self {
         Self { status, data: None }
     }
 
@@ -64,7 +64,7 @@ impl Response {
     }
 
     /// Get the response payload
-    pub fn payload(&self) -> &Option<Bytes> {
+    pub const fn payload(&self) -> &Option<Bytes> {
         &self.data
     }
 
@@ -79,17 +79,17 @@ impl Response {
     }
 
     /// Check if the response is successful (9000)
-    pub fn is_success(&self) -> bool {
+    pub const fn is_success(&self) -> bool {
         self.status.is_success()
     }
 
     /// Check if more data is available
-    pub fn more_data_available(&self) -> bool {
+    pub const fn more_data_available(&self) -> bool {
         self.status.is_more_data_available()
     }
 
     /// Get the number of additional bytes available
-    pub fn bytes_available(&self) -> Option<u8> {
+    pub const fn bytes_available(&self) -> Option<u8> {
         if self.status.sw1 == 0x61 {
             Some(self.status.sw2)
         } else {
@@ -98,7 +98,7 @@ impl Response {
     }
 
     /// Check if the response indicates wrong length
-    pub fn indicates_wrong_length(&self) -> bool {
+    pub const fn indicates_wrong_length(&self) -> bool {
         self.status.sw1 == 0x6C
     }
 

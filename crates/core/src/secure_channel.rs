@@ -71,14 +71,14 @@ impl SecurityLevel {
     ///
     /// A security level satisfies another if it has at least the same
     /// protection mechanisms enabled.
-    pub fn satisfies(&self, required: &Self) -> bool {
+    pub const fn satisfies(&self, required: &Self) -> bool {
         (self.encryption || !required.encryption)
             && (self.integrity || !required.integrity)
             && (self.authentication || !required.authentication)
     }
 
     /// Check if this security level has any protection
-    pub fn is_none(&self) -> bool {
+    pub const fn is_none(&self) -> bool {
         !self.encryption && !self.integrity && !self.authentication
     }
 }

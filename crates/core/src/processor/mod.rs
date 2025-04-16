@@ -43,7 +43,7 @@ pub struct TransportAdapter<'a, T: CardTransport> {
 
 impl<'a, T: CardTransport> TransportAdapter<'a, T> {
     /// Create a new transport adapter
-    pub fn new(transport: &'a mut T) -> Self {
+    pub const fn new(transport: &'a mut T) -> Self {
         Self { inner: transport }
     }
 }
