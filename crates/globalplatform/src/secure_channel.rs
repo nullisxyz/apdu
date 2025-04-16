@@ -96,7 +96,7 @@ impl SCP02Wrapper {
     }
 
     /// Get the current ICV
-    pub fn icv(&self) -> &Iv<Scp02> {
+    pub const fn icv(&self) -> &Iv<Scp02> {
         &self.icv
     }
 
@@ -138,7 +138,7 @@ impl<T: CardTransport> fmt::Debug for GPSecureChannel<T> {
 
 impl<T: CardTransport> GPSecureChannel<T> {
     /// Create a new secure channel with the specified transport and keys
-    pub fn new(transport: T, keys: Keys) -> Self {
+    pub const fn new(transport: T, keys: Keys) -> Self {
         // Simple constructor that just stores the transport and keys
         // The session and wrapper will be initialized during establish()
         Self {
@@ -154,7 +154,7 @@ impl<T: CardTransport> GPSecureChannel<T> {
     /// Get a reference to the session
     ///
     /// This will return None if the session hasn't been established yet
-    pub fn session(&self) -> Option<&Session> {
+    pub const fn session(&self) -> Option<&Session> {
         self.session.as_ref()
     }
 
@@ -378,7 +378,7 @@ impl<T: CardTransport> GPSecureChannel<T> {
     }
 
     /// Check if the secure channel is established
-    pub fn is_established(&self) -> bool {
+    pub const fn is_established(&self) -> bool {
         self.established
     }
 

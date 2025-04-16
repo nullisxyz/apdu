@@ -152,7 +152,7 @@ pub trait ResultExt<T> {
 }
 
 impl<T> ResultExt<T> for Result<T> {
-    fn context<S: Into<String>>(self, context: S) -> Result<T> {
+    fn context<S: Into<String>>(self, context: S) -> Self {
         self.map_err(|e| e.with_context(context))
     }
 }

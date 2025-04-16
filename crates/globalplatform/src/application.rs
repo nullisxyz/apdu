@@ -179,7 +179,7 @@ where
 
         let package_aid = info
             .package_aid
-            .ok_or_else(|| Error::CapFile("Package AID not found"))?;
+            .ok_or(Error::CapFile("Package AID not found"))?;
 
         if applet_index >= info.applet_aids.len() {
             return Err(Error::CapFile("Invalid applet index"));
@@ -215,7 +215,7 @@ where
 
         let package_aid = info
             .package_aid
-            .ok_or_else(|| Error::CapFile("Package AID not found"))?;
+            .ok_or(Error::CapFile("Package AID not found"))?;
 
         if info.applet_aids.is_empty() {
             return Err(Error::CapFile("No applets found in CAP file"));
@@ -252,7 +252,7 @@ where
     }
 
     /// Get a mutable reference to the executor
-    pub fn executor_mut(&mut self) -> &mut E {
+    pub const fn executor_mut(&mut self) -> &mut E {
         &mut self.executor
     }
 

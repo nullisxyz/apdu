@@ -149,7 +149,7 @@ pub mod operations {
 
         let package_aid = cap_info
             .package_aid
-            .ok_or_else(|| Error::CapFile("Missing package AID"))?;
+            .ok_or(Error::CapFile("Missing package AID"))?;
 
         // Install for load
         gp.install_for_load(&package_aid, None)
