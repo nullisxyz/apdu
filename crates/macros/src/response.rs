@@ -622,13 +622,21 @@ pub(crate) fn expand_response(
     // Extra error variants that are always included
     let extra_error_variants = quote! {
         /// Error from response parsing
+        ///
+        /// This variant represents errors that occur during the parsing of the response
+        /// from the card, rather than errors reported by the card itself.
         #[error(transparent)]
         ResponseError(#[from] nexum_apdu_core::Error),
 
         /// Unknown status word
+        ///
+        /// This variant is used when the card returns a status word that doesn't match
+        /// any of the explicitly defined error variants.
         #[error("Unknown status word: {sw1:02X}{sw2:02X}")]
         Unknown {
+            /// The first byte of the status word
             sw1: u8,
+            /// The second byte of the status word
             sw2: u8,
         }
     };
@@ -819,12 +827,21 @@ pub(crate) fn expand_response(
     // Generate the code
     let tokens = quote! {
         /// Successful response variants
+        ///
+        /// This enum contains all the possible successful responses for this APDU command.
+        /// Each variant represents a different success state, identified by specific status words
+        /// returned by the card and may include associated data from the response payload.
         #[derive(Debug, Clone, PartialEq, Eq)]
         #vis enum #ok_enum_name {
             #(#ok_variants,)*
         }
 
         /// Error response variants
+        ///
+        /// This enum contains all the possible error responses for this APDU command.
+        /// Each variant represents a specific error condition, identified by status words
+        /// returned by the card. Some error variants may include additional data
+        /// to provide more context about the error.
         #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
         #vis enum #error_enum_name {
             #(#error_variants,)*

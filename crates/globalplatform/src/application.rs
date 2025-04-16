@@ -5,9 +5,7 @@
 
 use std::path::Path;
 
-use nexum_apdu_core::executor::SecureChannelExecutor;
 use nexum_apdu_core::prelude::*;
-use nexum_apdu_core::secure_channel::SecurityLevel;
 
 use crate::commands::delete::DeleteOk;
 use crate::commands::get_status::GetStatusOk;

@@ -8,10 +8,7 @@ use std::fmt;
 use bytes::{BufMut, Bytes, BytesMut};
 use cipher::{Iv, Key};
 
-use nexum_apdu_core::command::{ApduCommand, Command};
-use nexum_apdu_core::error::Error;
-use nexum_apdu_core::secure_channel::SecurityLevel;
-use nexum_apdu_core::transport::CardTransport;
+use nexum_apdu_core::prelude::*;
 use rand::RngCore;
 use tracing::debug;
 
@@ -109,9 +106,6 @@ impl SCP02Wrapper {
 }
 
 /// GPSecureChannel implements the necessary functionality for GlobalPlatform secure channels
-// Implement the SecureChannel trait for GPSecureChannel
-use nexum_apdu_core::secure_channel::SecureChannel;
-
 pub struct GPSecureChannel<T: CardTransport> {
     /// Session containing keys and state - this will be initialized during establish()
     session: Option<Session>,
@@ -247,10 +241,6 @@ impl<T: CardTransport> GPSecureChannel<T> {
     }
 }
 
-// CardTransport is automatically implemented for all SecureChannel types via the blanket implementation
-
-// Implement the SecureChannel trait for GPSecureChannel
-
 impl<T: CardTransport> SecureChannel for GPSecureChannel<T> {
     type UnderlyingTransport = T;
 
@@ -295,15 +285,15 @@ impl<T: CardTransport> CardTransport for GPSecureChannel<T> {
             self.security_level,
             self.is_established()
         );
-        
+
         if self.is_established() {
             tracing::debug!("GPSecureChannel: protecting command with SCP02");
             // Apply SCP02 protection
             let protected = self.protect_command(command)?;
-            
+
             // Send the protected command
             let response = self.transport.transmit_raw(&protected)?;
-            
+
             // Process the response (for SCP02 this is a passthrough)
             self.process_response(&response)
         } else {
@@ -311,13 +301,13 @@ impl<T: CardTransport> CardTransport for GPSecureChannel<T> {
             self.transport.transmit_raw(command)
         }
     }
-    
+
     fn reset(&mut self) -> Result<(), Error> {
         // Close the channel if it's open
         if self.is_established() {
             self.close()?;
         }
-        
+
         // Reset the underlying transport
         self.transport.reset()
     }
@@ -325,7 +315,6 @@ impl<T: CardTransport> CardTransport for GPSecureChannel<T> {
 
 // Implementation of methods for GPSecureChannel
 impl<T: CardTransport> GPSecureChannel<T> {
-
     /// Get the current security level - this overrides the blanket implementation
     /// from the SecureChannel trait to return the actual security level
     pub fn security_level(&self) -> SecurityLevel {

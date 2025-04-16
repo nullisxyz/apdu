@@ -70,6 +70,7 @@ pub mod prelude {
 
     // Executor layer
     pub use crate::executor::Executor;
+    pub use crate::executor::SecureChannelExecutor;
     pub use crate::executor::response_aware::ResponseAwareExecutor;
 
     pub use crate::card::CardExecutor;

@@ -17,6 +17,10 @@ use crate::commands::{
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Error type for GlobalPlatform operations
+///
+/// This enum represents all possible errors that can occur during GlobalPlatform
+/// card management operations, including communication errors, cryptographic errors,
+/// and specific command errors returned by the card.
 #[derive(Debug, Error)]
 pub enum Error {
     /// Core error from nexum_apdu_core
@@ -93,34 +97,45 @@ pub enum Error {
     #[error("{0}")]
     Other(&'static str),
 
-    /// Command-specific errors
+    // Command-specific errors
+    
+    /// Error from DELETE command
     #[error(transparent)]
     DeleteError(#[from] DeleteError),
 
+    /// Error from EXTERNAL AUTHENTICATE command
     #[error(transparent)]
     ExternalAuthenticateError(#[from] ExternalAuthenticateError),
 
+    /// Error from GET RESPONSE command
     #[error(transparent)]
     GetResponseError(#[from] GetResponseError),
 
+    /// Error from GET STATUS command
     #[error(transparent)]
     GetStatusError(#[from] GetStatusError),
 
+    /// Error from INITIALIZE UPDATE command
     #[error(transparent)]
     InitializeUpdateError(#[from] InitializeUpdateError),
 
+    /// Error from INSTALL command
     #[error(transparent)]
     InstallError(#[from] InstallError),
 
+    /// Error from LOAD command
     #[error(transparent)]
     LoadError(#[from] LoadError),
 
+    /// Error from PUT KEY command
     #[error(transparent)]
     PutKeyError(#[from] PutKeyError),
 
+    /// Error from SELECT command
     #[error(transparent)]
     SelectError(#[from] SelectError),
 
+    /// Error from STORE DATA command
     #[error(transparent)]
     StoreDataError(#[from] StoreDataError),
 }

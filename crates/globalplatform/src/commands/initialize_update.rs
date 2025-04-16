@@ -33,10 +33,15 @@ apdu_pair! {
                 /// Success response
                 #[sw(SW_NO_ERROR)]
                 Success {
+                    /// Key diversification data
                     key_diversification_data: [u8; 10],
+                    /// Key information
                     key_info: [u8; 2],
+                    /// Sequence counter
                     sequence_counter: [u8; 2],
+                    /// Card challenge
                     card_challenge: [u8; 6],
+                    /// Card cryptogram
                     card_cryptogram: [u8; 8],
                 },
             }
