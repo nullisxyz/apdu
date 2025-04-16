@@ -84,13 +84,13 @@ where
     /// Get the status of applications
     pub fn get_applications_status(&mut self) -> Result<GetStatusOk> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::APPLICATIONS);
-        self.executor.execute_secure(&cmd).map_err(Error::from)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Get the status of load files
     pub fn get_load_files_status(&mut self) -> Result<GetStatusOk> {
         let cmd = GetStatusCommand::all_with_type(get_status_p1::EXEC_LOAD_FILES);
-        self.executor.execute_secure(&cmd).map_err(Error::from)
+        self.executor.execute(&cmd).map_err(Error::from)
     }
 
     /// Install a package for load
