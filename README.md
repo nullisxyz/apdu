@@ -1,5 +1,7 @@
 # nexum-apdu: Smart Card APDU in Rust
 
+**NOTE: This repo is merged and moved into the [nexum](https://github.com/nxm-rs/nexum) repo**
+
 nexum-apdu is a comprehensive toolkit for smart card communication in Rust using the APDU (Application Protocol Data Unit) protocol. Whether you're building a payment terminal, identity verification system, or HSM integration, nexum-apdu provides the foundation for secure card communications.
 
 [![docs.rs](https://img.shields.io/docsrs/nexum-apdu-core/latest)](https://docs.rs/nexum-apdu-core)
